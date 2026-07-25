@@ -45,7 +45,16 @@ description, and each target language gets its own companion mapping file.
   STRUCT→NamedTuple, LIST→Vector, …) sourced from DuckDB.jl's result
   conversion code; companion files state only deviations
 - generated Julia code uses DuckDB.jl + DataFrames.jl: for each table in the
-  dict, a typed reader (table → DataFrame) and writer (DataFrame → table)
+  dict, a bulk/row × read/write API surface:
+  - **bulk read** — whole table → typed DataFrame
+  - **bulk write** — replace and append from a DataFrame (columnar write
+    strategy; StructArray-backed struct columns exploited when present)
+  - **row read** — fetch by primary key
+  - **row write** — insert; update and delete by primary key
+  - row read/update/delete are emitted only for tables declaring
+    `constraints: [primary_key]`, with a clear diagnostic explaining the
+    omission otherwise; all dict-expressible types supported on every path
+    (fixed-size ARRAY excepted — diagnostic until DuckDB.jl ships support)
 - struct typedefs can map to *generated named Julia structs* (typedef
   `address` → generated `Address` + NamedTuple↔struct conversion)
 - a CLI subcommand exposing the generator (shape mirrors the existing DDL

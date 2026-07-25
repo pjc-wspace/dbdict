@@ -95,9 +95,21 @@ never interprets language-specific type names.
 
 ### phase 5: emission — primitives + CLI subcommand
 
-- [ ] emit reader (`read_{table}(con) -> DataFrame`) and writer
-      (`write_{table}(con, df)`) per table, primitive types only; write path
-      per the spike decision
+- [ ] emit bulk reader (`read_{table}(con) -> DataFrame`) and bulk writers
+      (`write_{table}!(con, df)` replace, `append_{table}!(con, df)`) per
+      table, primitive types only
+
+> per spike (notes/20260723-1530): no single binding path covers the type
+> matrix — STRUCT/MAP bind nowhere; appender rejects blob; prepared rejects
+> hugeint/decimal/uuid. writer = three tiers per table: (1) appender when
+> every column is appender-safe; (2) register the struct field arrays flat
+> + SQL struct reassembly ({'x': x, ...} FROM view) — verified incl. NULL
+> structs and nesting, natural fit for StructArray input; (3) generated
+> SQL literals for the remainder (maps, structs containing lists, blob)
+
+- [ ] fixed-size ARRAY columns: detect and emit a clear diagnostic —
+      DuckDB.jl 1.5.2 cannot even *read* them (support unreleased, on main);
+      decide hard-error vs warn-and-skip at implementation time
 - [ ] emitted style: plain Julia, training-wheels comments (maintainer is a
       julia novice) — same philosophy as the Rust side
 - [ ] CLI subcommand `dbdict gen julia [dict]` — `gen` is the namespace for
@@ -120,17 +132,42 @@ shaped by phase-1 findings; expect revision.
       `using:`; user-declared types assumed in scope)
 - [ ] one or two proven conversion-pair overrides as worked examples
       (e.g. DECIMAL → Float64) — nothing shipped unverified
-- [ ] StructArrays container opt-in for struct columns, *if* the spike
-      verified it; otherwise record as follow-up
+- [ ] StructArrays container opt-in for struct columns — spike verified:
+      read-side only (writer serializes literals regardless); generated
+      typed structs make the field arrays concrete (untyped NamedTuples →
+      Vector{Any} otherwise); needs a nullable-struct-column policy
+      (skipmissing breaks row alignment)
 - **verify:** golden tests extended to the nested matrix;
   `cargo test --workspace` green
 
-### phase 7: round-trip integration test + docs
+### phase 7: row-level api (standard loaders/writers)
+
+added by rescope 2026-07-23: bulk/row × read/write for all types, not just
+struct columns. row functions reuse phase 5/6 value machinery (literal /
+prepared per the spike matrix) — no new type logic, new API surface only.
+
+- [ ] primary-key plumbing: locate `constraints: [primary_key]` in the
+      model; multi-column keys supported; tables without a key get a
+      training-wheels comment in emitted code explaining which functions
+      were omitted and why
+- [ ] emit `get_{table}(con, key)` — row read by key → NamedTuple (or
+      generated struct where mapped)
+- [ ] emit `insert_{table}!(con, row)` — always emitted, keyless
+- [ ] emit `update_{table}!(con, key, changes)` and
+      `delete_{table}!(con, key)` — key-gated
+- [ ] row values cross the boundary via the same tiered strategy as bulk
+      (prepared where bindable, literal otherwise — per spike matrix)
+- **verify:** golden tests for a keyed and an unkeyed table (emitted
+  API differs); `cargo test --workspace` green
+
+### phase 8: round-trip integration test + docs
 
 - [ ] round-trip harness: test fixture dict covering the full type matrix →
       emit Julia → run `julia` (1.12.6 via juliaup, confirmed on PATH)
       writing a DataFrame through the generated writer and reading it back →
       compare values and types
+- [ ] row-api round-trip: insert → get → update → get → delete against the
+      same fixture (keyed table)
 - [ ] harness lives as a Rust integration test in `dbdict-julia/tests/`,
       skipping with a clear message when `julia` is absent (keeps
       `cargo test --workspace` green on julia-less machines)
