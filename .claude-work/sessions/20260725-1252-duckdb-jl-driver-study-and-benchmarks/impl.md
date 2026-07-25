@@ -13,28 +13,65 @@
 
 ## phases
 
-### phase 1: environment + verification scripts (the four open behaviors)
+### phase 1: environment + verification scripts (the four open behaviors) — DONE 2026-07-26T11:28:27+12:00
 
-- [ ] create `research/duckdb-driver-jl/` with `Project.toml` +
+- [x] create `research/duckdb-driver-jl/` with `Project.toml` +
       `Manifest.toml`: DuckDB (=1.5.2), DataFrames, StructArrays,
       FixedPointDecimals, BenchmarkTools
-- [ ] `verify_blob_appender.jl` — settle the spike/study discrepancy:
+  - also: Manifest seeded from session `20260723-1109`'s `spike/` so the
+    resolution is identical; `[compat] DuckDB = "=1.5.2"` makes the pin
+    explicit; added stdlibs Dates, UUIDs, Random, Tables, Printf
+  - verified: DuckDB.jl 1.5.2, DuckDB_jll 1.5.4, engine `version()` =
+    v1.5.4, driver source resolves to the `2J7sd` tree the study cites,
+    `Threads.nthreads()` = 1
+- [x] `verify_blob_appender.jl` — settle the spike/study discrepancy:
       append `Vector{UInt8}` into a BLOB column in isolation, no
       confounds; if it errors, isolate why the code path (`appender.jl:94`)
       and the spike measurement disagree
-- [ ] `verify_enum_appender.jl` — appender string → ENUM column cast
+  - also: added a raw-`ccall` control re-declaring the same C entry point
+    with `Ptr{Cvoid}`, which localised the defect to `api.jl:7261`
+  - also: needed THREE payload classes (ASCII / non-UTF-8 / with-NUL) —
+    the first two probes were confounded by Julia's `Cstring` conversion
+    and by DuckDB's UTF-8 validation, neither of which is the cast
+  - result: **both notes were right** — path wired but unusable
+- [x] `verify_enum_appender.jl` — appender string → ENUM column cast
       (inferred from the UUID stringify path; measure it)
-- [ ] `verify_appender_transaction.jl` — appender rows written inside
+  - also: UUID + FixedDecimal controls (the sibling stringify paths),
+    over-precision decimal (silently rounds), multi-row batch
+  - also: added a multi-column probe that found the phase's most serious
+    result — a failed cell does not advance the appender's column cursor,
+    so subsequent values MISALIGN across columns rather than just dropping
+- [x] `verify_appender_transaction.jl` — appender rows written inside
       `DBInterface.transaction`: visible after commit, gone after
       rollback (flush-before-commit semantics)
-- [ ] `verify_structarray_register.jl` — StructArray through
+  - also: buffered (unflushed) rows escape the transaction; measured 5
+    rows appearing after a forced `GC.gc()` post-rollback via the
+    `appender.jl:59` finalizer. mitigation (appender lifetime inside the
+    txn body, `try`/`finally`) measured to hold
+  - also: bulk-replace atomicity and cross-connection isolation confirmed
+- [x] `verify_structarray_register.jl` — StructArray through
       `register_table` (Tables.jl route): flat StructArray of primitives,
       and one with a nested field (expected to fail at bind — record it)
-- [ ] each script prints MEASURED verdicts; record results in a running
+  - also: measured that `columntable` aliases (`===`) the StructArray's
+    component arrays — registration is zero-copy, the per-query scan is not
+  - also: nullable / UUID / list field boundary cases, and the spike's
+    path-E leaf-flatten + SQL reassembly workaround end to end
+  - **corrects the study**: §3c says failure happens at query bind time,
+    not registration — measured, the throw comes out of `register_table`
+    itself (it creates a view, and DuckDB binds at view creation)
+- [x] each script prints MEASURED verdicts; record results in a running
       `findings.md` in the same dir (becomes raw material for phase 3)
 - **verify:** all four scripts run to completion with unambiguous
   verdicts; findings.md records each with the script name and driver
   file:line it confirms or refutes
+  - PASSED: 4/4 scripts exit 0; findings.md has 4 script attributions,
+    4 VERDICT lines, 19 distinct driver `file:line` citations
+
+> carried into phase 2: add a JSON dependency for `results.json`.
+> `Threads.nthreads()` = 1 in this environment — the study (§4) notes DB
+> construction sets DuckDB's thread count from Julia's, so the registered-scan
+> path will be measured single-threaded unless the suite is launched with
+> `JULIA_NUM_THREADS` set. decide and record that in the benchmark header.
 
 ### phase 2: benchmark harness + runs
 
