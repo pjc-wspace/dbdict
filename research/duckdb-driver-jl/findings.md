@@ -282,3 +282,112 @@ Corrections this phase makes to the driver study (`notes/20260725-1007`):
   true**, with the buffered-rows leak as a new gotcha.
 - §3c "failure at bind time, not at registration" — **wrong**; the throw surfaces
   from `register_table`.
+
+---
+
+## 5. Appender + LIST segfaults the process (discovered in phase 2)
+
+**Script:** `verify_list_appender_gc.jl`
+
+Not a planned verification — found when the phase-2 benchmark harness died while
+timing the `list`/`appender` cell.
+
+**VERDICT: the appender's LIST path works, then takes the whole process down. It
+must not be emitted by codegen.**
+
+| Mode | Result |
+|---|---|
+| appender + LIST, GC left to fire naturally | **SIGSEGV**, reproducibly, at ~1.0–1.2M list appends |
+| prepared-statement bind + LIST (same `create_value`) | **survived 4,000,000 list values** |
+
+Crash sites observed inside `libduckdb`:
+`LogicalType::LogicalType(LogicalType const&)` and `StructType::GetChildTypes` —
+a `LogicalType` read after it is no longer valid.
+
+This is strictly worse than a missing capability. The spike and the study both
+recorded list appends as working (`appender.jl:106-114`), and they do — at the
+scales anyone tests interactively. The failure needs roughly a million appends,
+which is exactly the bulk-load case dbdict codegen would generate.
+
+**Consequence for codegen.** LIST columns must use the prepared bind or the
+literal path, never the appender. Because the process dies, no amount of
+row-count or error checking in generated code can recover from it.
+
+### 5b. Hypotheses tested and NOT confirmed
+
+Recorded so the next person does not repeat them:
+
+- **H1 — GC finalizes `type`/`values` during the ccall.** `value.jl:52-56` reads
+  `type.handle` plus each child handle and passes them to
+  `duckdb_create_list_value` with no `GC.@preserve`; both are finalizer-owned
+  (`logical_type.jl:10`, `value.jl:9`). *Tested:* forcing `GC.gc()` between
+  batches, and disabling the GC entirely. Both survived — but **both arms were
+  uninformative**: a forced collection at a safe point cannot exercise a race
+  inside a ccall, and disabling the GC removes finalizers altogether.
+- **H2 — the appender retains the `duckdb_value` past `append` while Julia
+  destroys it at scope exit.** Would explain why bind survives (execute consumes
+  the value before returning) and the appender does not. *Tested:* `midbatch`
+  mode forces GC while rows are still buffered, pre-flush. Survived — but that
+  run performed only ~40k appends against a ~1M crash threshold, so it is
+  **underpowered, not a refutation**.
+
+Isolating the true cause means C++-level debugging of `libduckdb`, which
+`goal.md` puts out of scope ("out: … patching DuckDB.jl itself"). The measured
+behaviour and its codegen consequence are the deliverable here.
+
+> Upstream-issue candidate, and the strongest of the four: a supported API that
+> segfaults under ordinary bulk use, with a working alternative (bind) sharing
+> the same `create_value` code path.
+
+**Benchmark impact.** The `list`/`appender` cell is excluded from the suite via
+`skip_reason` in `bench_common.jl`, with the crash as its stated reason, so
+`results.md` reports it as an explicit exclusion rather than a blank.
+
+---
+
+## 6. Literal SQL silently loses 1 ULP on DOUBLE values
+
+**Script:** `bench_common.jl` (`sqllit`), caught by its own content gate
+
+Also unplanned. The benchmark harness's content check failed at
+`flat` / 1M / `literal`:
+
+```
+CONTENT MISMATCH: column :x row 500000 —
+  expected 0.11914626526441173, got 0.11914626526441172
+```
+
+**VERDICT: a bare decimal literal is parsed by DuckDB as DECIMAL, not DOUBLE, and
+the round-trip through DECIMAL costs one ULP. An explicit `::DOUBLE` cast does
+not fix it.**
+
+Measured, inserting the Float64 `0.11914626526441173`:
+
+| Literal form | Reads back as | Exact? |
+|---|---|---|
+| `0.11914626526441173` | `FixedDecimal{Int64,17}` | no — it is not even a DOUBLE |
+| `0.11914626526441173::DOUBLE` | `Float64` | **no — 1 ULP low** |
+| `%.17g` digits, bare | `FixedDecimal{Int64,17}` | no |
+| `%.17g` digits + `::DOUBLE` | `Float64` | **no — 1 ULP low** |
+| `1.19146265264411730e-01` (exponent form) | `Float64` | **yes** |
+| `'0.11914626526441173'::DOUBLE` (quoted) | `Float64` | **yes** |
+
+The cast does not help because the literal is parsed as `DECIMAL(_,17)` *first*
+and only then converted; 17 fractional digits cannot uniquely identify a Float64.
+Adding more digits does not help for the same reason — the problem is the type
+the parser chooses, not the precision written.
+
+**Fix applied** in `sqllit(::AbstractFloat)`: emit `@sprintf("%.17e", v)`.
+Exponent notation makes DuckDB use the DOUBLE parser directly. Verified exact
+over 2005 values including `0.0`, `-0.0`, `1e308`, `5e-324`, and `1/3` — 0
+mismatches, for both the exponent form and the quoted-string form.
+
+**Consequence for codegen.** dbdict's literal writer tier — the universal
+fallback, and the only path available for several column types — must serialize
+DOUBLE/FLOAT in exponent notation (or as a quoted string cast). Emitting
+`string(x)` corrupts data silently: no error, no warning, values that are wrong
+in the last bit. NaN/±Inf were already special-cased and are unaffected.
+
+> This one is a **DuckDB** behaviour, not a DuckDB.jl bug, so it is not an
+> upstream-issue candidate for the driver — but it belongs in the reference
+> doc's gotcha list, because any generated SQL writer hits it.

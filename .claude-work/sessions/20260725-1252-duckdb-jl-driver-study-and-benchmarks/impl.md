@@ -73,30 +73,79 @@
 > path will be measured single-threaded unless the suite is launched with
 > `JULIA_NUM_THREADS` set. decide and record that in the benchmark header.
 
-### phase 2: benchmark harness + runs
+### phase 2: benchmark harness + runs — DONE 2026-07-26T13:22:37+12:00
 
-- [ ] `bench_common.jl` — data generation for the four type profiles
+> decisions taken at phase start (user): measure BOTH thread configs
+> (`-t 1` and `-t auto`), because DuckDB inherits Julia's thread count
+> (database.jl:81-82) and a 1-thread run would measure the registered-scan
+> tier with its parallelism off; and full default BenchmarkTools sampling
+> everywhere (self-limiting — the 5s budget caps sample count per cell)
+
+- [x] `bench_common.jl` — data generation for the four type profiles
       (flat primitives; flat + uuid + decimal; struct column; list
       column) at 10k / 100k / 1M rows; deterministic seeds; literal-SQL
       serializer lifted from the spike's `literal_matrix.jl`
-- [ ] `bench_write.jl` — BenchmarkTools benchmarks, per profile × scale ×
+  - also: a **content gate** (`check_written`) — row counts alone are the
+    check phase 1 §2b proved insufficient, so every cell is value-verified
+    before being timed. it earned its keep immediately (see §6 below)
+  - also: an applicability matrix where every skip carries the driver
+    `file:line` or measured reason that justifies it
+- [x] `bench_write.jl` — BenchmarkTools benchmarks, per profile × scale ×
       applicable path: appender (per-cell append loop), register +
       `INSERT INTO ... SELECT`, batched literal `INSERT ... VALUES`;
       skip inapplicable cells (e.g. struct via appender) explicitly, not
       silently
-- [ ] `bench_read.jl` — materialized (`Tables.columns` → DataFrame) vs
+  - also: added a 4th path `register_flat` (struct leaves registered flat,
+    struct rebuilt in SQL — the spike's path E), since plain `register`
+    cannot carry a struct column and the cell would otherwise be blank
+- [x] `bench_read.jl` — materialized (`Tables.columns` → DataFrame) vs
       streaming (`StreamResult` + `Tables.partitions`) reads of the same
       tables, per profile × scale; include time-to-first-chunk for
       streaming
-- [ ] `run_all.jl` — one entry point: runs verifications + benchmarks,
+- [x] `run_all.jl` — one entry point: runs verifications + benchmarks,
       writes `results.md` (tables: median times, allocation counts,
       rows/sec) + raw `results.json`; julia version, package versions,
       thread count, and machine line recorded in the output header
-- [ ] run the suite twice; confirm path *orderings* are stable between
+  - also: split into `run <tag>` / `merge` modes, because thread count is
+    fixed at process start — comparing configs means separate processes
+- [x] run the suite twice; confirm path *orderings* are stable between
       runs (absolute numbers may wobble; ordering is the deliverable)
+  - also: `run_sweep.sh` drives 2 configs × 2 repeats. the `-t 1` repeats
+    run CONCURRENTLY (1 thread each, 64 cores); the `-t auto` repeats stay
+    serial because each claims every core and contention could flip the
+    very orderings the sweep exists to check
 - **verify:** results.md exists with all profile × scale × path cells
   filled or explicitly marked skipped; second run reproduces the same
   per-cell path ordering; everything committed
+  - PASSED: 84 cells per run × 4 runs — 60 measured, 24 skipped, **0
+    failed**; **all 24 write orderings reproduced**; 2 of 36 read
+    orderings did not (materialized-vs-streaming near-ties, flagged in
+    results.md as too close to call)
+
+#### two unplanned findings (recorded in findings.md §5, §6)
+
+- **§5 — appender + LIST SEGFAULTS the process** at ~1.0–1.2M appends;
+  prepared bind over the same `create_value` survives 4M. Found when the
+  harness died mid-benchmark. Two hypotheses tested and NOT confirmed
+  (both recorded so they are not re-run). Cell excluded from the suite
+  with the crash as its stated reason. Codegen must never emit it.
+- **§6 — literal SQL silently loses 1 ULP on DOUBLE**: DuckDB parses a
+  bare decimal literal as DECIMAL, and `::DOUBLE` does not help because
+  the DECIMAL parse happens first. Caught by the content gate. Fixed with
+  `@sprintf("%.17e", v)`; verified exact over 2005 values. Affects
+  dbdict's universal-fallback writer tier.
+
+#### headline results (feed phase 3)
+
+- **contradicts study §4**: `register` + `INSERT…SELECT` beats the
+  appender by 3.4× at 1M flat rows (58.1 ms vs 196.0 ms) and allocates
+  538× less (14.8k vs 8.0M) — the appender costs one Julia allocation per
+  cell. Crossover between 10k and 100k; below that the appender wins.
+- **threads are counterproductive**: `-t auto` (64) is ~2× *slower* than
+  1 thread at every scale measured.
+- per-profile winners at 1M: flat → `register`; rich → `appender`
+  (register cannot carry UUID); struct → `register_flat`; list →
+  `literal` only.
 
 ### phase 3: consolidated driver reference
 

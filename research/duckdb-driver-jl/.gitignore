@@ -1,0 +1,4 @@
+# console transcripts from run_sweep.sh — regenerable, and the authoritative
+# record is raw/results-*.json (committed). kept out so reruns don't churn diffs
+sweep.log
+sweep-t1-*.log
