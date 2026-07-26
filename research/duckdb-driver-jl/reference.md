@@ -1,103 +1,129 @@
 # DuckDB.jl 1.5.2 — consolidated driver reference
 
-**Status: current.** This is the single source of truth for DuckDB.jl behaviour in
-this project. It supersedes and merges:
+**Status: current.** The single source of truth for DuckDB.jl behaviour in this
+project. It supersedes the capability spike
+(`.claude-work/notes/20260723-1530`), the driver study
+(`.claude-work/notes/20260725-1007`), and `findings.md` in this directory. All three
+remain as historical record; where any of them disagrees with this document, **this
+document wins**, and [Appendix A](#appendix-a-corrections-to-the-source-notes)
+itemises every override.
 
-- `.claude-work/notes/20260723-1530-duckdb-jl-capability-spike.md` — the capability
-  spike (measured, read/write matrix, literal-path addendum)
-- `.claude-work/notes/20260725-1007-duckdb-jl-driver-study.md` — the driver study
-  (source-code read of the installed package)
-- `findings.md` (this directory) — phase 1 verification of the four open behaviours,
-  plus two defects found during phase 2
-- `results.md` (this directory) — the benchmark sweep
+Audience: whoever writes or reviews dbdict's Julia codegen. If you only read one
+section, read [§8](#8-codegen-rules) — it is self-contained and constrains what
+generated code may emit.
 
-Those files stay in place as the historical record. Where they disagree with this
-document, **this document wins** — every disagreement is itemised in
-[Appendix A](#appendix-a--corrections-to-the-source-notes).
+## Citing evidence
 
-Audience: whoever is writing or reviewing dbdict's Julia codegen. Section
-[8](#8-consequences-for-dbdict-julia-codegen) is the part that constrains generated
-code.
+Every behavioural claim is followed by its source in parentheses:
 
----
+- `(appender.jl:94)` — read from the installed driver source,
+  `~/.julia/packages/DuckDB/2J7sd/src/`
+- `(verify_blob_appender.jl)` — measured by that script, in this directory. Run any
+  of them with `julia --project=. <script>.jl`
+- `(§7)` — measured by the benchmark sweep; raw records in `raw/results-*.json`
+- Docs quotes are quoted verbatim with the URL inline
+- **`Inferred:`** — reasoning, not evidence. Spelled out in words wherever it applies,
+  never mixed into a sourced claim
 
-## 0. How to read this document
+## Contents
 
-Every behavioural claim carries an evidence marker. Nothing in this document is
-asserted from memory or from analogy.
+1. [Executive summary](#1-executive-summary)
+2. [Environment and versioning](#2-environment-and-versioning)
+3. [Reading](#3-reading)
+4. [Writing](#4-writing)
+5. [Defects and traps](#5-defects-and-traps)
+6. [Transactions and connections](#6-transactions-and-connections)
+7. [Benchmarks](#7-benchmarks)
+8. [Codegen rules](#8-codegen-rules)
+9. [Reproducing and refreshing](#9-reproducing-and-refreshing)
+- [Appendix A — corrections to the source notes](#appendix-a-corrections-to-the-source-notes)
 
-| Marker | Meaning |
+## Quick answers
+
+| I want to… | Go to |
 |---|---|
-| **M** | **Measured** — a script in this directory produced it. The script name is given. |
-| **C** | **Code** — read from the installed driver source, cited `file:line`. |
-| **D** | **Docs** — quoted verbatim from the official DuckDB Julia client docs, with URL. |
-| **I** | **Inferred** — reasoning, not evidence. Flagged explicitly and never mixed into an M or C claim. |
-
-Driver source, ground truth for every **C** citation:
-`~/.julia/packages/DuckDB/2J7sd/src/` (DuckDB.jl 1.5.2).
-
-Docs source for every **D** citation:
-<https://duckdb.org/docs/lts/clients/julia.html> — quotes re-fetched and verified
-2026-07-26. (The `/docs/stable/clients/julia` URL 404s; `/docs/clients/julia`
-redirects to the LTS page.)
-
-Reproduce any **M** claim with `julia --project=. <script>.jl` from this directory.
+| pick a write path for a column type | [§4.1 matrix](#41-write-capability-matrix), then [§8.1 tiers](#81-writer-tier-selection) |
+| know what codegen must never emit | [§8.2](#82-never-emit-and-emit-instead) |
+| know what a DuckDB type reads back as in Julia | [§3.5](#35-read-type-support) |
+| find out why appended rows vanished or got scrambled | [§5.1.2](#512-appender-errors-are-silent-and-a-failed-cell-misaligns-later-columns) |
+| find out why rows appeared after a ROLLBACK | [§5.1.3](#513-buffered-appender-rows-escape-the-transaction-and-leak-at-gc-time) |
+| find out why the process died mid-load | [§5.1.4](#514-appending-list-values-segfaults-the-process) |
+| find out why my streaming reader sees one column called `tbl` | [§5.1.6](#516-a-streamed-chunk-is-not-a-working-tablesjl-source) |
+| know what a float literal must look like | [§5.2.1](#521-a-bare-decimal-literal-loses-1-ulp-on-double) |
+| know which `using` lines generated code needs | [§8.3](#83-required-imports) |
+| reproduce a number | [§9](#9-reproducing-and-refreshing) |
 
 ---
 
 ## 1. Executive summary
 
-**Reading is complete and rich.** Every DuckDB type dbdict is likely to use converts
-to a sensible Julia type, except fixed-size `ARRAY`, which throws when the result is
-constructed — you never get a handle to work with. Streaming reads (2048-row chunks)
-exist and work. **C**/**M**
+**Reading: every type dbdict uses converts to a sensible Julia type, except fixed-size
+`ARRAY`, which throws when the result is constructed** — you never get a handle to
+work with. Streaming reads exist in 2048-row chunks and work, with one trap
+([§5.1.6](#516-a-streamed-chunk-is-not-a-working-tablesjl-source)).
 
-**Writing is the weak side, and there is no single path that covers the type
-matrix.** Four paths exist, each with a different type ceiling: appender, prepared
-bind, registered table scan, and generated literal SQL. Only literal SQL covers
-everything. **M**
+**Writing is the weak side, and no single path covers the type matrix.** Five paths
+exist with different type ceilings — registered scan, registered-flat, prepared bind,
+appender, literal SQL. Only literal SQL covers everything.
 
-**The performance advice in the docs and in the driver study is wrong for bulk
-loads.** The docs say the appender is "much faster than using prepared statements or
-individual INSERT INTO statements" (**D**), and the study's implication 4 concluded
-the appender should be the default writer tier. Measured: at 1 thread,
-`register_table` + `INSERT … SELECT` beats the appender at **every** scale tested,
-and by 3.4× at 1M rows (58.1 ms vs 196.0 ms) while allocating **538× less**
-(14.9k vs 8.0M allocations). The docs' claim survives only against its literal
-subject — per-row prepared statements and individual `INSERT` statements, which are
-indeed 2–3 orders of magnitude slower. **M**
+**The docs' performance advice is wrong for bulk loads.** The docs say the Appender is
+"much faster than using prepared statements or individual INSERT INTO statements"
+(<https://duckdb.org/docs/lts/clients/julia.html>), and the driver study concluded the
+appender should be the default writer. Measured: at 1 thread, `register_table` +
+`INSERT … SELECT` beats the appender at **every** scale tested, by 3.4× at 1M rows
+(58.1 ms vs 196.0 ms) while allocating **538× less** (14.9k vs 8.0M) (§7.2). The docs'
+claim was never tested against the registered-scan path.
 
-**More Julia threads make things worse, never better.** No measured cell improved
-from 1 thread to 64. The registered-scan path — the fastest path — degrades the
-worst (flat 1M: 58.1 → 111.2 ms; struct 10k: 0.73 → 5.71 ms). **M**
+**More Julia threads did not help any path.** The registered scan — the fastest path —
+degrades worst (flat 1M: 58.1 → 111.2 ms; struct 10k: 0.73 → 5.71 ms). Three cells
+improved, all by ≤7% and within run-to-run spread (§7.4).
 
-**Five confirmed defects and one engine trap**, all reproducible:
+**Six confirmed driver defects and one engine trap**, all reproducible:
 
-1. `duckdb_append_blob` is **unusable** from Julia — a wrong argument type in the
-   autogenerated wrapper (`api.jl:7261`). **M**
-2. Appender errors are **completely silent**, and a failed cell **misaligns every
-   subsequent column value** rather than dropping a row. A row-count check does not
-   detect this. **M**
+1. `duckdb_append_blob` is **unusable** from Julia — wrong argument type in the
+   autogenerated wrapper ([§5.1.1](#511-duckdb_append_blob-is-unusable)).
+2. Appender errors are **silent**, and a failed cell **misaligns every subsequent
+   column value** rather than dropping a row. A row-count check does not detect this
+   ([§5.1.2](#512-appender-errors-are-silent-and-a-failed-cell-misaligns-later-columns)).
 3. Appender rows buffered at rollback time **escape the transaction** and can land
-   later, at GC time. **M**
-4. Appending `LIST` values **segfaults the process** at ~1–1.2M appends. **M**
-5. Non-ASCII strings inside written lists are truncated; empty vectors append as
-   `NULL`. **C**
-6. (DuckDB, not the driver) A bare decimal literal is parsed as `DECIMAL`, so
+   later, at GC time
+   ([§5.1.3](#513-buffered-appender-rows-escape-the-transaction-and-leak-at-gc-time)).
+4. Appending `LIST` values **segfaults the process** at ~1–1.2M appends
+   ([§5.1.4](#514-appending-list-values-segfaults-the-process)).
+5. Empty vectors append as `NULL`; non-ASCII strings inside written lists are
+   truncated ([§5.1.5](#515-list-value-bugs-empty-vector-to-null-on-append-non-ascii-truncation)).
+6. A streamed chunk declares itself a Tables.jl column source but is not one —
+   `Tables.columnnames` returns `(:tbl,)` with no error
+   ([§5.1.6](#516-a-streamed-chunk-is-not-a-working-tablesjl-source)).
+7. (DuckDB engine, not the driver) A bare decimal literal is parsed as `DECIMAL`, so
    generated literal SQL **silently loses 1 ULP on DOUBLE** — and `::DOUBLE` does not
-   fix it. **M**
+   fix it ([§5.2.1](#521-a-bare-decimal-literal-loses-1-ulp-on-double)).
 
-**The never-emit list for codegen:** appender for `LIST` columns (segfault),
-`duckdb_append_blob` (broken), `DuckDB.load!` / `appendDataFrame` (fixed temp-name
-collision), `DBInterface.lastrowid` (always throws), per-row prepared `INSERT`s
-(slowest and narrowest), and `string(x)` for floats in generated SQL (silent
-precision loss).
+**Every query must alias its columns.** DuckDB identifiers are case-insensitive even
+when quoted, and "In case of a conflict, when the same identifier is spelt with
+different cases, one will be selected randomly"
+(<https://duckdb.org/docs/current/sql/dialect/keywords_and_identifiers.html>). An
+explicit `AS` alias is the only way to make Julia-side names deterministic
+([§5.2.2](#522-identifier-case-rules)).
+
+**The never-emit list** — each expanded with a replacement in
+[§8.2](#82-never-emit-and-emit-instead):
+
+- appender for a `LIST` column (segfaults the process)
+- `duckdb_append_blob` (throws before reaching C)
+- an `Appender` that outlives its transaction body (rows leak past a rollback)
+- a row count as the only validation of an appender write (misses misalignment)
+- `string(x)` for a float in generated SQL (silently loses 1 ULP)
+- `Tables.getcolumn` / `Tables.schema` / `Tables.columnnames` on a streamed chunk
+- `DuckDB.load!` / `appendDataFrame` (fixed temp-name collision)
+- `DBInterface.lastrowid` (always throws)
+- an unaliased column reference
 
 ---
 
-## 2. Environment, versioning, and refresh triggers
+## 2. Environment and versioning
 
-Every claim in this document is a claim about **this exact resolution**. **M**
+Every claim in this document is a claim about **this exact resolution**.
 
 | Component | Version | Source |
 |---|---|---|
@@ -115,270 +141,510 @@ Every claim in this document is a claim about **this exact resolution**. **M**
 DuckDB.jl 1.5.2 is the latest registered release, verified against the General
 registry.
 
-### 2.1 The DuckDB_jll version, settled
+**On the jll version.** DuckDB.jl 1.5.2's own `Project.toml` declares
+`[compat] DuckDB_jll = "1.5.2"`, which is a *bound*, not a pin — Julia's Pkg docs:
+"a version specifier given as e.g. `1.2.3` is therefore assumed to be compatible with
+the versions `[1.2.3 - 2.0.0)`" (<https://pkgdocs.julialang.org/v1/compatibility/>).
+The resolved artifact is `1.5.4+0`. Practical consequence: the Julia side and dbdict's
+bundled Rust side run **the same** engine version, so any cross-version storage
+compatibility remains untested.
 
-Both source notes state `DuckDB_jll 1.5.2`, and the held codegen session's
-`review-decisions.md` finding 14 records "measured 1.5.2". **All three are wrong.**
+### 2.1 Refresh triggers
 
-The confusion is mechanical: DuckDB.jl 1.5.2's own `Project.toml` contains
-`[compat] DuckDB_jll = "1.5.2"`, which is a *compat bound*, not a pin — Julia's
-Pkg docs state "a version specifier given as e.g. `1.2.3` is therefore assumed to be
-compatible with the versions `[1.2.3 - 2.0.0)`"
-(<https://pkgdocs.julialang.org/v1/compatibility/>). The resolved artifact recorded
-in the `Manifest.toml` — both this directory's and the spike's, which resolve
-identically — is **`DuckDB_jll 1.5.4+0`**, and the running engine reports `v1.5.4`.
-**M**
+Re-run this directory's scripts and update this document when:
 
-Practical consequence: the Julia side and dbdict's bundled Rust side are running
-**the same engine version** (1.5.4), not adjacent ones. The spike's storage-format
-compatibility check (§4 of the spike note: files written by either side open in the
-other, structs/enums/lists intact) was therefore a same-version check, which is
-weaker evidence for cross-version compatibility than it appeared.
+- **a new DuckDB.jl release** — the primary trigger. Run the four automatable
+  `verify_*.jl` scripts first (fast, and they settle behaviour), then the sweep if
+  behaviour changed.
+- **a DuckDB_jll bump without a DuckDB.jl release** — possible given the compat bound
+  above. This changes the engine under a fixed driver, so the engine traps (§5.2) and
+  the benchmark numbers can move while the driver defects do not.
+- **any upstream issue (§5.4) being fixed** — each removes a constraint on codegen.
+- **a different machine** — ordering conclusions (§7.6) should hold; absolute numbers
+  will not.
 
-### 2.2 Refresh triggers
-
-Re-run this directory's scripts and update this document when **any** of these
-happens:
-
-- **a new DuckDB.jl release** — the primary trigger. Re-run all five `verify_*.jl`
-  scripts first (they are fast and settle behaviour), then the sweep if behaviour
-  changed.
-- **a DuckDB_jll bump** without a DuckDB.jl release — possible, given the compat
-  bound above. This changes the engine under a fixed driver, so the *engine* traps
-  (§5.2) and the benchmark numbers can move while the driver defects do not.
-- **any of the four upstream issues (§5.4) being fixed** — each one removes a
-  constraint on codegen.
-- **a different machine** — the ordering conclusions (§7.6) should hold; the absolute
-  numbers will not.
-
-Do not re-run the full sweep casually: it is ~30 minutes of wall clock.
+The full sweep is ~30 minutes. Do not re-run it casually.
 
 ---
 
 ## 3. Reading
 
-### 3.1 API surface
+### 3.1 Opening a database; DB vs Connection
+
+A `DB` wraps a database handle plus a built-in `main_connection` (`database.jl:76-98`);
+passing a `DB` to any API uses that connection (`result.jl:755-756`). One connection
+serves one query at a time, and **transactions are per-connection**
+(`database.jl:36-42`), so each concurrent task needs its own.
+
+```julia
+using DuckDB  # this alone puts DBInterface in scope: DuckDB.jl:12 does `export DBInterface`
+
+# ":memory:" for scratch, or a filesystem path for a persistent file
+db = DBInterface.connect(DuckDB.DB, ":memory:")
+DBInterface.execute(db, "CREATE TABLE t (id INTEGER)")   # runs on db.main_connection
+
+# a second connection is a separate transaction context
+con = DBInterface.connect(db)
+
+# transactions are per-connection: con's uncommitted insert is invisible through db
+DuckDB.begin_transaction(con)
+DBInterface.execute(con, "INSERT INTO t VALUES (1)")
+println("through con (inside its txn): ", only(DBInterface.execute(con, "SELECT count(*) c FROM t")).c)
+println("through db  (other conn)    : ", only(DBInterface.execute(db, "SELECT count(*) c FROM t")).c)
+DuckDB.rollback(con)
+
+DBInterface.close!(con)
+DBInterface.close!(db)
+```
+
+```
+through con (inside its txn): 1
+through db  (other conn)    : 0
+```
+
+> **Import gotcha.** `using DuckDB, DBInterface` **fails** in this project —
+> `DBInterface` is a transitive dependency, not a direct one, so it is not on the load
+> path. `using DuckDB` alone is correct and sufficient. `Tables` and `DataFrames`,
+> where used, each need their own `using`. See [§8.3](#83-required-imports).
+
+### 3.2 Entry points
 
 | Call | Where | Notes |
 |---|---|---|
-| `DBInterface.execute(db_or_con, sql)` | `result.jl:876-886` **C** | prepares a `Stmt`, executes, returns `QueryResult`; default `MaterializedResult` |
-| `DBInterface.execute(db_or_con, sql, result_type)` | `result.jl:876-886` **C** | `result_type` ∈ {`DuckDB.MaterializedResult`, `DuckDB.StreamResult`} (`DuckDB.jl:14-16`) |
-| `DBInterface.execute(stmt, params)` | `result.jl:875` **C** | rebind + execute a prepared `Stmt` |
-| `DBInterface.prepare(con_or_db, sql[, result_type])` | `result.jl:856-860` **C** | returns `Stmt` (`statement.jl:1-28`) |
-| `DuckDB.query(con_or_db, sql)` | `result.jl:895-906` **C** | direct `duckdb_query`; supports multi-statement SQL; always materialized |
-| `DuckDB.toDataFrame` | `old_interface.jl:11-12` **C** | deprecated shim; returns a `Tables.columntable` (a NamedTuple, *not* a DataFrame) |
+| `DBInterface.execute(db_or_con, sql)` | `result.jl:876-886` | prepares a `Stmt`, executes, returns `QueryResult`; default `MaterializedResult` |
+| `DBInterface.execute(db_or_con, sql, result_type)` | `result.jl:876-886` | `result_type` ∈ {`DuckDB.MaterializedResult`, `DuckDB.StreamResult`} (`DuckDB.jl:14-16`) |
+| `DBInterface.execute(stmt, params)` | `result.jl:875` | rebind + execute a prepared `Stmt` |
+| `DBInterface.prepare(con_or_db, sql[, result_type])` | `result.jl:856-860` | returns `Stmt` (`statement.jl:1-28`) |
+| `DuckDB.query(con_or_db, sql)` | `result.jl:895-906` | direct `duckdb_query`; supports multi-statement SQL; always materialized |
+| `DuckDB.toDataFrame` | `old_interface.jl:11-12` | deprecated shim; returns a `Tables.columntable` (a NamedTuple), not a DataFrame |
 
-Multi-statement SQL, `PIVOT`, and `IMPORT DATABASE` fail under `DBInterface.execute`
-(one prepared statement only). The docs say: "Some SQL statements, such as PIVOT and
-IMPORT DATABASE are executed as multiple prepared statements and will error when
-using DuckDB.execute(). Instead they can be run with DuckDB.query()." **D**
+Multi-statement SQL, `PIVOT` and `IMPORT DATABASE` fail under `DBInterface.execute`,
+which handles one prepared statement. The docs
+(<https://duckdb.org/docs/lts/clients/julia.html>):
 
-### 3.2 Materialization mechanics **C**
+> "Some SQL statements, such as PIVOT and IMPORT DATABASE are executed as multiple
+> prepared statements and will error when using DuckDB.execute(). Instead they can be
+> run with DuckDB.query() instead of DuckDB.execute() and will always return a
+> materialized result."
 
-`Tables.columns(q)` (`result.jl:543-567`) fetches **all** chunks into a
-`Vector{DataChunk}`, then converts **column-at-a-time across all chunks**
-(`convert_columns`, `result.jl:534-541`), caching on `q.tbl` and wrapping in
-`Tables.CopiedColumns`.
+### 3.3 Materialized reads
 
-`convert_column_loop` (`result.jl:352-404`) makes two passes:
-
-1. scan every chunk's validity mask to decide whether the column has any NULLs
-   (`result.jl:359-367`; `all_valid` at `data_chunk.jl:52-54`, `vector.jl:28-34`);
-2. allocate **one** full-length output array — `Vector{DST}` when NULL-free,
-   otherwise `Vector{Union{Missing,DST}}` prefilled with `missing`
-   (`result.jl:368-387`) — and fill it chunk by chunk via `unsafe_wrap` over the raw
-   vector data (`vector.jl:13-17`), converting value-by-value (`result.jl:111-133`).
-
-So: chunk-at-a-time fetch, column-at-a-time conversion, value-at-a-time inner loop.
-Strings decode from `duckdb_string_t` with the 12-byte inline optimisation
-(`STRING_INLINE_LENGTH`, `ctypes.jl:1`; `result.jl:68-80`). Nested types recurse
+`Tables.columns(q)` fetches **all** chunks into a `Vector{DataChunk}`, then converts
+column-at-a-time across all chunks (`result.jl:543-567`, `534-541`), caching on `q.tbl`.
+Per column it allocates exactly one output array — `Vector{T}` when the column is
+NULL-free, `Vector{Union{Missing,T}}` otherwise (`result.jl:368-387`) — filling it via
+`unsafe_wrap` over the raw vector data (`vector.jl:13-17`) and converting value by
+value (`result.jl:111-133`). Strings decode from `duckdb_string_t` with the 12-byte
+inline optimisation (`ctypes.jl:1`, `result.jl:68-80`); nested types recurse
 (list `result.jl:160-205`, struct `235-263`, map `298-350`, union `265-296`).
 
-Row iteration (`Base.iterate`) defers to `Tables.rows(Tables.columns(q))`
-(`result.jl:768-769`) — **iterating rows materializes the whole result anyway.**
+```julia
+using DuckDB
+using DataFrames
 
-### 3.3 Streaming **C**
+con = DBInterface.connect(DuckDB.DB, ":memory:")
+DBInterface.execute(con, """
+  CREATE TABLE t AS
+  SELECT i::INTEGER AS id, (i * 1.5)::DOUBLE AS x, ('r' || i) AS s FROM range(3) tbl(i)
+""")
 
-Prepare/execute with `DuckDB.StreamResult`, then either:
+# execute returns a QueryResult, which is a Tables.jl source; DataFrame consumes it
+df = DataFrame(DBInterface.execute(con, "SELECT * FROM t ORDER BY id"))
+println(df)
 
-- `Tables.partitions(q)` → `QueryResultChunkIterator` (`result.jl:784-822`); each
-  partition is one data chunk (≤ `VECTOR_SIZE` = 2048 rows) converted to a NamedTuple
-  table (`QueryResultChunk`, `result.jl:771-796`), or
-- `DuckDB.nextDataChunk(q)` for raw `DataChunk`s (`result.jl:824-843`).
+# always alias: duckdb is case-preserving but case-insensitive, and the DECLARED
+# spelling wins unless you use AS (§5.2.2)
+println(names(DataFrame(DBInterface.execute(con, "SELECT ID AS ID, X AS X FROM t"))))
+println(names(DataFrame(DBInterface.execute(con, "SELECT ID, X FROM t"))))
+```
 
-**Restrictions:** results are strictly single-pass. Iterating partitions twice throws
-(`result.jl:800-807`); calling `Tables.columns` after `nextDataChunk` throws
-(`result.jl:545-551`). `Tables.partitions` also works on a *materialized* result — it
-then pages through already-computed chunks without building the whole Julia table.
+```
+3×3 DataFrame
+ Row │ id     x        s
+     │ Int32  Float64  String
+─────┼────────────────────────
+   1 │     0      0.0  r0
+   2 │     1      1.5  r1
+   3 │     2      3.0  r2
+["ID", "X"]
+["id", "x"]
+```
 
-### 3.4 Read type support
+### 3.4 Streaming reads
 
-Measured column-by-column in the spike (`read_path.jl`, **M**) and cross-checked
-against `JULIA_TYPE_MAP` (`ctypes.jl:382-413`), `duckdb_type_to_julia_type`
-(`ctypes.jl:423-463`), and the conversion functions (`result.jl:460-500`,
-`ctypes.jl:509-586`) (**C**). Where both exist they agree.
+> **Do not use row iteration to stream.** `Base.iterate` defers to
+> `Tables.rows(Tables.columns(q))` (`result.jl:768-769`), which materializes the entire
+> result first. Streaming means `Tables.partitions` or `DuckDB.nextDataChunk`, nothing
+> else.
 
-| DuckDB type | Julia type | Evidence |
+Pass `DuckDB.StreamResult` as the third positional argument, then iterate
+`Tables.partitions(q)` — each partition is one data chunk of at most
+`VECTOR_SIZE` = 2048 rows (`result.jl:784-822`). Results are **strictly single-pass**:
+iterating partitions twice throws (`result.jl:800-807`), and calling `Tables.columns`
+after `nextDataChunk` throws (`result.jl:545-551`).
+
+```julia
+using DuckDB, Tables
+
+# always wrap in a function: at global scope julia treats loop-body assignments as
+# new locals ("soft scope") and a while/for accumulator silently breaks
+function first_chunk_rows(con, sql)
+  q = DBInterface.execute(con, sql, DuckDB.StreamResult)
+  chunk, _ = iterate(Tables.partitions(q))
+  # unwrap with Tables.columns(chunk) — getcolumn/schema on a chunk fail (§5.1.6)
+  return length(first(Tables.columns(chunk)))
+end
+
+function all_chunk_rows(con, sql)
+  q = DBInterface.execute(con, sql, DuckDB.StreamResult)
+  rows, chunks = 0, 0
+  for chunk in Tables.partitions(q)   # single-pass: iterating twice throws
+    rows += length(first(Tables.columns(chunk)))
+    chunks += 1
+  end
+  return rows, chunks
+end
+
+con = DBInterface.connect(DuckDB.DB, ":memory:")
+DBInterface.execute(con, "CREATE TABLE big AS SELECT i::INTEGER AS id FROM range(1000000) tbl(i)")
+println("first chunk: ", first_chunk_rows(con, "SELECT * FROM big"), " rows")
+println("all chunks : ", all_chunk_rows(con, "SELECT * FROM big"))
+```
+
+```
+first chunk: 2048 rows
+all chunks : (1000000, 489)
+```
+
+**Streaming's payoff is latency, not throughput.** Time-to-first-chunk is essentially
+flat in table size — 246 µs at 10k rows, 420 µs at 1M on the `flat` profile (§7.3).
+Total throughput is a wash against materializing.
+
+> **Caveat the benchmark did not cover.** That flatness holds only for *pipeline-able*
+> queries. The sweep measured `SELECT * FROM t` (`bench_read.jl:80`). Add a blocking
+> operator and the property disappears: with `ORDER BY`, first-chunk time goes 0.72 ms
+> at 10k rows to 6.75 ms at 1M — worse than materializing. Generated readers that
+> stream should avoid `ORDER BY` unless the caller asked for it.
+
+### 3.5 Read type support
+
+Measured column by column (`read_path.jl`) and cross-checked against `JULIA_TYPE_MAP`
+(`ctypes.jl:382-413`), `duckdb_type_to_julia_type` (`ctypes.jl:423-463`) and the
+conversion functions (`result.jl:460-500`, `ctypes.jl:509-586`). Where both exist they
+agree.
+
+| DuckDB type | Julia type | Source |
 |---|---|---|
-| BOOLEAN | `Bool` | **M** + **C** `ctypes.jl:384` |
-| TINYINT / SMALLINT / INTEGER / BIGINT | `Int8` / `Int16` / `Int32` / `Int64` | **M** (INTEGER, BIGINT) + **C** `ctypes.jl:385-388` |
-| UTINYINT / USMALLINT / UINTEGER / UBIGINT | `UInt8` / `UInt16` / `UInt32` / `UInt64` | **C** `ctypes.jl:391-394` |
-| HUGEINT | `Int128` | **M** + **C** `ctypes.jl:389`, `511` |
-| UHUGEINT | `UInt128` | **C** `ctypes.jl:390`, `512` |
-| FLOAT / DOUBLE | `Float32` / `Float64` | **M** (DOUBLE) + **C** `ctypes.jl:395-396` |
-| DECIMAL(w,s) | `FixedDecimal{Int16\|Int32\|Int64\|Int128, s}`, by internal storage width | **M** (18,4 → `FixedDecimal{Int64,4}`) + **C** `ctypes.jl:425-438`, `result.jl:103-109` |
-| VARCHAR | `String` | **M** + **C** `ctypes.jl:407`, `result.jl:68-80` |
-| ENUM | `String` (dictionary lookup) | **M** + **C** `ctypes.jl:408`, `result.jl:99-101`, `logical_type.jl:86-96` |
-| BLOB | **`Base.CodeUnits{UInt8, String}`** — not `Vector{UInt8}` | **M** + **C** `ctypes.jl:409`, `result.jl:82-84` |
-| BIT | `Base.CodeUnits{UInt8, String}` (raw internal bytes, incl. padding byte) | **C** `ctypes.jl:410`, `result.jl:464` |
-| GEOMETRY | `Base.CodeUnits{UInt8, String}` (raw bytes) | **C** `ctypes.jl:412`, `result.jl:464` |
-| DATE | `Dates.Date` | **M** + **C** `ctypes.jl:397`, `533-535` |
-| TIME | `Dates.Time` (µs resolution) | **M** + **C** `ctypes.jl:398`, `540-548` |
-| TIME_TZ | `Dates.Time` — **UTC offset discarded** (in-code `TODO: how to preserve the offset?`) | **M** + **C** `ctypes.jl:399`, `550-560` |
-| TIMESTAMP | `Dates.DateTime` (µs → **ms truncation**) | **M** + **C** `ctypes.jl:400`, `566-567` |
-| TIMESTAMP_TZ | `Dates.DateTime`, **normalized to UTC, offset dropped** | **M** + **C** `ctypes.jl:401`, `result.jl:472-473` |
-| TIMESTAMP_S / TIMESTAMP_MS | `Dates.DateTime` | **C** `ctypes.jl:402-403`, `562-565` |
-| TIMESTAMP_NS | `Dates.DateTime` (ns → **ms truncation**, `÷ 1_000_000`) | **C** `ctypes.jl:404`, `568-569` |
-| INTERVAL | `Dates.CompoundPeriod` (Month + Day + Microsecond) | **C** `ctypes.jl:405`, `571-572` |
-| UUID | `UUIDs.UUID` | **M** + **C** `ctypes.jl:406`, `574-582` |
-| LIST(T) | `Vector{Union{Missing, julia(T)}}` | **M** + **C** `ctypes.jl:439-440`, `result.jl:160-205` |
-| STRUCT(...) | `NamedTuple{(names...)}` — **field types not carried**; values are `Any` | **M** + **C** `ctypes.jl:441-449`, `result.jl:235-263` |
-| MAP(K,V) | `Dict{Any,Any}` — untyped | **M** + **C** `ctypes.jl:411`, `result.jl:298-350` |
-| UNION(...) | `Union{Missing, member types...}` | **C** `ctypes.jl:450-457`, `result.jl:265-296` |
-| INVALID | `Missing` | **C** `ctypes.jl:383` |
+| BOOLEAN | `Bool` | `ctypes.jl:384` |
+| TINYINT / SMALLINT / INTEGER / BIGINT | `Int8` / `Int16` / `Int32` / `Int64` | `ctypes.jl:385-388` |
+| UTINYINT / USMALLINT / UINTEGER / UBIGINT | `UInt8` / `UInt16` / `UInt32` / `UInt64` | `ctypes.jl:391-394` |
+| HUGEINT | `Int128` | `ctypes.jl:389`, `511` |
+| UHUGEINT | `UInt128` | `ctypes.jl:390`, `512` |
+| FLOAT / DOUBLE | `Float32` / `Float64` | `ctypes.jl:395-396` |
+| DECIMAL(w,s) | `FixedDecimal{Int16\|Int32\|Int64\|Int128, s}`, by storage width | `ctypes.jl:425-438`, `result.jl:103-109` |
+| VARCHAR | `String` | `ctypes.jl:407`, `result.jl:68-80` |
+| ENUM | `String` (dictionary lookup) | `ctypes.jl:408`, `result.jl:99-101`, `logical_type.jl:86-96` |
+| BLOB | **`Base.CodeUnits{UInt8, String}`** — not `Vector{UInt8}` | `ctypes.jl:409`, `result.jl:82-84` |
+| BIT | `Base.CodeUnits{UInt8, String}` (raw bytes incl. padding byte) | `ctypes.jl:410`, `result.jl:464` |
+| GEOMETRY | `Base.CodeUnits{UInt8, String}` (raw bytes) | `ctypes.jl:412`, `result.jl:464` |
+| DATE | `Dates.Date` | `ctypes.jl:397`, `533-535` |
+| TIME | `Dates.Time` (µs resolution) | `ctypes.jl:398`, `540-548` |
+| TIME_TZ | `Dates.Time` — **UTC offset discarded** (in-code `TODO`) | `ctypes.jl:399`, `550-560` |
+| TIMESTAMP | `Dates.DateTime` (µs → **ms truncation**) | `ctypes.jl:400`, `566-567` |
+| TIMESTAMP_TZ | `Dates.DateTime`, **normalized to UTC, offset dropped** | `ctypes.jl:401`, `result.jl:472-473` |
+| TIMESTAMP_S / TIMESTAMP_MS | `Dates.DateTime` | `ctypes.jl:402-403`, `562-565` |
+| TIMESTAMP_NS | `Dates.DateTime` (ns → **ms truncation**) | `ctypes.jl:404`, `568-569` |
+| INTERVAL | `Dates.CompoundPeriod` (Month + Day + Microsecond) | `ctypes.jl:405`, `571-572` |
+| UUID | `UUIDs.UUID` | `ctypes.jl:406`, `574-582` |
+| LIST(T) | `Vector{Union{Missing, julia(T)}}` | `ctypes.jl:439-440`, `result.jl:160-205` |
+| STRUCT(...) | `NamedTuple{(names...)}` — **field types not carried** | `ctypes.jl:441-449`, `result.jl:235-263` |
+| MAP(K,V) | `Dict{Any,Any}` — untyped | `ctypes.jl:411`, `result.jl:298-350` |
+| UNION(...) | `Union{Missing, member types...}` | `ctypes.jl:450-457`, `result.jl:265-296` |
+| INVALID | `Missing` | `ctypes.jl:383` |
 
-The `STRUCT → NamedTuple` row is why generated typed structs are worth having: field
-access on an untyped NamedTuple is `Any`-typed downstream. **M**
+On the STRUCT row: the *value* is concretely typed, but the *column* eltype
+`NamedTuple{(:x, :y)}` carries no type parameters, so field access through the column
+infers `Any` while the same access on an extracted value infers `Float64` (measured
+with `Base.return_types`). That is the argument for generated typed structs.
 
-### 3.5 Types that throw on read
+### 3.6 Types that throw on read
 
 `NotImplementedException("Unsupported type for duckdb_type_to_julia_type: …")`
 (`ctypes.jl:459-461`), raised from the **`QueryResult` constructor**
-(`result.jl:28-29`): **C**
-
-> **ARRAY** (fixed-size, type id 33), BIGNUM, SQLNULL, ANY, STRING_LITERAL,
-> INTEGER_LITERAL, TIME_NS (type ids `ctypes.jl:190-197`).
+(`result.jl:28-29`), for: **ARRAY** (fixed-size, type id 33), BIGNUM, SQLNULL, ANY,
+STRING_LITERAL, INTEGER_LITERAL, TIME_NS (type ids `ctypes.jl:190-196`).
 
 Merely *executing* a query whose result contains such a column throws — there is no
-result handle to inspect or work around. Measured for `INTEGER[3]`: any query
-touching the column throws, on reads *and* on the read-back half of writes. **M**
+handle to inspect. `Inferred:` ARRAY support exists on DuckDB.jl `main`
+(`convert_vector_array`), but that symbol does not appear anywhere in the installed
+1.5.2 source, so this is a claim about an upstream branch that this document has not
+verified.
 
-Mitigation for codegen: cast in the generated SQL (`SELECT col::T[] …`), since LIST
-reads fine. ARRAY support exists on DuckDB.jl `main` (`convert_vector_array` in
-`result.jl`) but is **unreleased** in 1.5.2. **C**
+```julia
+using DuckDB, Tables
 
-### 3.6 Precision and timezone contracts
+con = DBInterface.connect(DuckDB.DB, ":memory:")
+DBInterface.execute(con, "CREATE TABLE t (id INTEGER, v INTEGER[3])")
+DBInterface.execute(con, "INSERT INTO t VALUES (1, [10,20,30])")
 
-These are the contracts generated code must document and honour:
+# WRONG — the throw comes from the QueryResult CONSTRUCTOR (result.jl:28-29), so there
+# is no result handle to inspect. even SELECT * is fatal
+try
+  DBInterface.execute(con, "SELECT * FROM t")
+catch e
+  println("SELECT * -> ", sprint(showerror, e))
+end
 
-| Contract | Value | Evidence |
+# RIGHT — cast to LIST in the generated SQL; LIST reads fine
+println("cast to LIST -> ", Tables.columntable(
+  DBInterface.execute(con, "SELECT id, v::INTEGER[] AS v FROM t")))
+
+# detect ahead of time from the catalog rather than by catching:
+# INTEGER[3] is distinguishable from INTEGER[] there
+types = Tables.columntable(DBInterface.execute(con,
+  "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 't'"))
+println("declared types -> ", collect(zip(types.column_name, types.data_type)))
+```
+
+```
+SELECT * -> Unsupported type for duckdb_type_to_julia_type: DUCKDB_TYPE_ARRAY
+cast to LIST -> (id = Int32[1], v = Vector{Union{Missing, Int32}}[[10, 20, 30]])
+declared types -> [("id", "INTEGER"), ("v", "INTEGER[3]")]
+```
+
+### 3.7 Precision and timezone contracts
+
+| Contract | Value | Source |
 |---|---|---|
-| `DateTime` resolution | **milliseconds.** Julia's `DateTime` is ms; µs stored via SQL are lost on read | **C** `ctypes.jl:566-567` |
-| `Time` resolution | **microseconds** on read; appender truncates ns → µs (`÷1000`), bind/table-scan **throw `InexactError`** on sub-µs | **C** `ctypes.jl:540-548`, `appender.jl:100`, `table_scan.jl:27` |
-| `TIMESTAMP_NS` | truncated to **ms** on read | **C** `ctypes.jl:568-569` |
-| Timezone policy | **Julia `DateTime` ≡ a UTC instant.** Literals carry explicit `+00`; TIMESTAMPTZ reads arrive UTC-normalized; the binding paths bind a naive `DateTime` as the UTC instant | **M** — verified with session `TimeZone = Pacific/Auckland` (+12) actually in effect, so this is not "the session happened to be UTC" |
-| TIMETZ | same UTC contract as TIMESTAMPTZ | **M** |
+| `DateTime` resolution | **milliseconds**. Julia's `DateTime` is ms; µs stored via SQL are lost on read | `ctypes.jl:566-567` |
+| `Time` resolution | **microseconds** on read; appender truncates ns → µs, bind and table-scan **throw `InexactError`** on sub-µs | `ctypes.jl:540-548`, `appender.jl:100`, `table_scan.jl:27` |
+| `TIMESTAMP_NS` | truncated to **ms** on read | `ctypes.jl:568-569` |
+| Timezone policy | **Julia `DateTime` ≡ a UTC instant.** Literals carry explicit `+00`; TIMESTAMPTZ reads arrive UTC-normalized; binding paths bind a naive `DateTime` as the UTC instant | `literal_matrix.jl` — verified with session `TimeZone = Pacific/Auckland` (+12) in effect, so not "the session happened to be UTC" |
+| TIMETZ | same UTC contract | `literal_matrix.jl` |
 
-Full round-trip fidelity for timestamps is therefore **ms only**, in both directions.
+Full round-trip fidelity for timestamps is **ms only**, both directions.
 
-### 3.7 Nullability contract
+### 3.8 Nullability
 
 `Tables.schema` **always** reports `Union{Missing,T}` (`result.jl:26-30`), but the
-actual materialized column array is `Vector{T}` when the column contains no NULLs and
-`Vector{Union{Missing,T}}` otherwise (`result.jl:368-402`). **C**
+materialized column is `Vector{T}` when NULL-free and `Vector{Union{Missing,T}}`
+otherwise (`result.jl:368-402`). List/struct/map children are always
+`Union{Missing,…}` arrays (`result.jl:179, 217, 317`).
 
-List/struct/map *children* are always allocated as `Union{Missing,…}` arrays
-(`result.jl:179, 217, 317`). **C**
+The schema is therefore **not** a nullability signal — do not branch on it. In Julia
+`Vector{Int32}` and `Vector{Union{Missing,Int32}}` are different concrete types, so a
+generated method annotated with one will `MethodError` on the other at runtime.
 
-Generated readers must accept **both** `Vector{T}` and `Vector{Union{Missing,T}}` at
-runtime and must not infer nullability from the schema.
+```julia
+using DuckDB, Tables
+
+con = DBInterface.connect(DuckDB.DB, ":memory:")
+DBInterface.execute(con, "CREATE TABLE t AS SELECT * FROM (VALUES (1,10),(2,NULL),(3,30)) v(a,b)")
+
+q = DBInterface.execute(con, "SELECT a, b FROM t ORDER BY a")
+sch = Tables.schema(q)
+cols = Tables.columns(q)
+
+println("schema types  : ", sch.types)
+println("typeof(cols.a): ", typeof(cols.a))   # NULL-free -> concrete Vector{T}
+println("typeof(cols.b): ", typeof(cols.b))   # has a NULL -> Union array
+
+# WRONG — annotating the concrete element type compiles fine, then fails at runtime
+# on whichever column happens to contain a NULL
+narrow(v::Vector{Int32}) = sum(v)
+println("narrow(a) -> ", narrow(cols.a))
+try
+  narrow(cols.b)
+catch e
+  println("narrow(b) -> ", first(split(sprint(showerror, e), '\n')))
+end
+
+# RIGHT — accept AbstractVector and let skipmissing absorb both shapes
+wide(v::AbstractVector) = sum(skipmissing(v))
+println("wide(a) = ", wide(cols.a), "   wide(b) = ", wide(cols.b))
+
+# second trap: coalesce with a bare `0` (an Int64) widens the reconstructed eltype
+println("coalesce 0        -> ", eltype([coalesce(x, 0) for x in cols.b]))
+println("coalesce Int32(0) -> ", eltype([coalesce(x, Int32(0)) for x in cols.b]))
+```
+
+```
+schema types  : (Union{Missing, Int32}, Union{Missing, Int32})
+typeof(cols.a): Vector{Int32}
+typeof(cols.b): Vector{Union{Missing, Int32}}
+narrow(a) -> 6
+narrow(b) -> MethodError: no method matching narrow(::Vector{Union{Missing, Int32}})
+wide(a) = 6   wide(b) = 40
+coalesce 0        -> Signed
+coalesce Int32(0) -> Int32
+```
 
 ---
 
 ## 4. Writing
 
-### 4.1 The four paths at a glance
+Paths appear here in the tier order [§8.1](#81-writer-tier-selection) recommends.
 
-| Path | Mechanism | Type ceiling | Bulk performance |
-|---|---|---|---|
-| **appender** | one C call per cell + `end_row` (`appender.jl:77-124`) | widest value-binding path: ints incl. 128-bit, floats, strings, Date/Time/DateTime, UUID, FixedDecimal, 1-level lists of primitives | mid — ~8 Julia allocations per row; **not** vectorized on the Julia side |
-| **prepared bind** | `duckdb_bind_*` + execute (`statement.jl:47-77`) | narrower than the appender: **no** Int128/UInt128/UUID/FixedDecimal/interval | worst for bulk (per-execute overhead), but the **only** working BLOB and safe LIST path |
-| **register + `INSERT … SELECT`** | `register_table` + a SQL view over `julia_tbl_scan` (`table_scan.jl:200-208`) | narrowest: only `create_logical_type` coverage — flat primitives + decimals. No UUID, list, struct, map, blob | **best**, by a wide margin (§7) |
-| **literal SQL** | generated `INSERT … VALUES` text | **everything**, including struct, map, nested, blob-with-NUL | worst by 2–3 orders of magnitude; allocates up to 1.7 GiB at 1M rows |
+### 4.1 Write capability matrix
 
-A fifth, derived path — **`register_flat`** (register a struct's *leaf* arrays flat,
-reassemble the struct in SQL) — extends the register path to struct columns whose
-leaves are all registerable. See §4.4.
+The single capability table. ✅ works · ⚠️ works with a caveat · ❌ throws or corrupts ·
+n/a not applicable.
 
-### 4.2 Appender
+| Type | register | register_flat | prepared bind | appender | literal |
+|---|---|---|---|---|---|
+| BOOLEAN, all int/uint widths | ✅ | n/a | ⚠️ no 128-bit | ✅ | ✅ |
+| FLOAT / DOUBLE | ✅ | n/a | ✅ | ✅ | ⚠️ exponent notation required (§5.2.1) |
+| DECIMAL | ✅ | n/a | ❌ | ⚠️ over-precision silently rounded | ✅ |
+| VARCHAR | ✅ | n/a | ✅ | ✅ | ✅ |
+| ENUM | ✅ via VARCHAR→ENUM cast | n/a | ✅ via cast | ⚠️ invalid/wrong-case **silently lost** (§5.1.2) | ✅ |
+| BLOB | ❌ | n/a | ✅ **only working bulk path** | ❌ **broken** (§5.1.1) | ✅ |
+| DATE | ✅ | n/a | ✅ | ✅ | ✅ |
+| TIME | ⚠️ `InexactError` sub-µs | n/a | ⚠️ same | ⚠️ ns→µs truncation | ✅ |
+| TIMESTAMP | ✅ | n/a | ✅ | ✅ (ms contract) | ✅ |
+| TIMESTAMPTZ / TIMETZ | ✅ UTC contract | n/a | ✅ | ✅ | ✅ `+00` literals |
+| UUID | ❌ | n/a | ❌ | ✅ (stringified) | ✅ |
+| LIST of primitives | ❌ | n/a | ✅ (4M verified) | ❌ **segfaults** (§5.1.4) | ✅ |
+| LIST containing `missing` | ❌ | n/a | ❌ | ❌ | ✅ |
+| LIST, empty vector | ❌ | n/a | ✅ writes `[]` | ❌ **becomes NULL** (§5.1.5) | ✅ |
+| nested LIST | ❌ | n/a | ❌ | ❌ | ✅ |
+| STRUCT | ❌ | ✅ leaves flat, rebuilt in SQL | ❌ | ❌ | ✅ |
+| MAP | ❌ | ❌ | ❌ | ❌ | ✅ |
+| INTERVAL | ❌ | n/a | ❌ | ❌ | read-only everywhere |
+| ARRAY (fixed-size) | ❌ | ❌ | ❌ | ❌ | ❌ unreadable in 1.5.2 (§3.6) |
 
-**Lifecycle** (**C**): `Appender(db_or_con, table[, schema])` (`appender.jl:40-62`,
-C call `duckdb_appender_create` `api.jl:6687`) → per row, one `append(appender, val)`
-per column, then `end_row(appender)` (`appender.jl:121-124`) → `flush(appender)`
-(`appender.jl:126-129`) → `close(appender)` / `DBInterface.close!`
-(`appender.jl:72-75, 131`; destroy at `64-70`).
+Two rows differ from what the source notes recorded, both measured here: **ENUM via
+`register`** works (a Julia `String` column is in `create_logical_type` coverage and
+DuckDB casts VARCHAR→ENUM on insert), and **empty vector via prepared bind** writes a
+real empty list, not NULL — the NULL behaviour is the *appender's* alone.
 
-> **Docs error.** The docs say "Appends are made in row-wise format. For every column,
-> an append() call should be made, after which the row should be finished by calling
-> flush()." (**D**) That is wrong, and contradicted by the docs' own example: rows are
-> finished with `end_row()` (`appender.jl:121-124`); `flush()` pushes buffered rows to
-> the table (`appender.jl:126-129`). (**C**)
+### 4.2 Registered tables — `register` (tier 1)
 
-**Type dispatch** (`append` dispatches on the Julia value type) (**C**):
+`register_table(con_or_db, tbl, name)` stores `columntable(tbl)` in
+`db.registered_objects` and creates a SQL view
+`CREATE OR REPLACE VIEW "name" AS SELECT * FROM julia_tbl_scan('name')`
+(`table_scan.jl:200-208`); `unregister_table` drops it (`table_scan.jl:210-215`).
 
-| Julia type | C call | Citation | Status |
-|---|---|---|---|
-| `Bool` | `duckdb_append_bool` | `appender.jl:78` | ok |
-| `Int8`/`Int16`/`Int32`/`Int64` | `duckdb_append_int8/16/32/64` | `appender.jl:79-82` | ok |
-| `Int128` | `duckdb_append_hugeint` | `appender.jl:83` | ok |
-| `UInt8`…`UInt64` | `duckdb_append_uint8/16/32/64` | `appender.jl:85-88` | ok |
-| `UInt128` | `duckdb_append_uhugeint` | `appender.jl:84` | ok |
-| `Float32` / `Float64` | `duckdb_append_float` / `_double` | `appender.jl:89-90` | ok |
-| other `AbstractFloat` (e.g. `Float16`) | widened to `Float64` | `appender.jl:77` | ok |
-| `Missing` / `Nothing` | `duckdb_append_null` | `appender.jl:91` | ok **M** |
-| `AbstractString` | `duckdb_append_varchar` | `appender.jl:92` | ok |
-| `Base.UUID` | **stringified**, then varchar append | `appender.jl:93` | ok **M** (exact round-trip) |
-| `FixedDecimal` | **stringified**, then varchar append | `appender.jl:95` | ok **M**, but see over-precision below |
-| `Vector{UInt8}` | `duckdb_append_blob` | `appender.jl:94` | **BROKEN** — §5.1.1 |
-| `Date` | `duckdb_append_date` (epoch-days) | `appender.jl:97-98` | ok |
-| `Time` | `duckdb_append_time`, ns `÷ 1000` → µs | `appender.jl:100` | **truncates** |
-| `DateTime` | `duckdb_append_timestamp`, ms `* 1000` → µs | `appender.jl:103-104` | ok |
-| `AbstractVector{T}` | list via `create_value` + `duckdb_append_value` | `appender.jl:106-114` | **SEGFAULTS at scale** — §5.1.4 |
-| anything else | `println(val)`, then `NotImplementedException` | `appender.jl:116-119` | throws |
+**Type ceiling.** The bind step strips `Missing` from the eltype (`table_scan.jl:19`)
+and calls `add_result_column` (`table_scan.jl:114`) → `create_logical_type`
+(`table_function.jl:38-39`). Coverage (`logical_type.jl:28-62`): `String`/
+`AbstractString`, `Bool`, `Int8/16/32/64/128`, `UInt8/16/32/64/128`, `Float32/64`,
+`Date`, `Time`, `DateTime`, `FixedDecimal{Int16|32|64|128,s}`. Everything else —
+`UUID`, `Vector`, `NamedTuple`, `Dict`, `CompoundPeriod`, `Char`, `Symbol`, `Any` —
+throws `NotImplementedException("Unsupported type for create_logical_type")`
+(`logical_type.jl:64-66`).
 
-**Not appendable:** intervals (`duckdb_append_interval` exists at `api.jl:7197` but is
-never wired up), structs/NamedTuples, Dicts/maps, nested lists. **C**
+**Rejection happens at `register_table`, not at query time** — the call creates a view
+and DuckDB binds the table function while creating it, so an unsupported type surfaces
+immediately and loudly (`verify_structarray_register.jl`).
 
-**ENUM columns: append the label as a `String`.** The C appender casts VARCHAR→ENUM.
-This was *Inferred* in the study; it is now **measured true** (`verify_enum_appender.jl`).
-Valid labels round-trip; invalid and **wrong-case** labels are silently lost — see
-§5.1.2, which is the more important half of this result. **M**
+```julia
+using DuckDB, Tables, UUIDs
 
-**Over-precision decimals are silently rounded**: `FixedDecimal{Int64,4}(12.3456)`
-into a `DECIMAL(18,2)` column lands as `12.35`, no warning. **M**
+con = DBInterface.connect(DuckDB.DB, ":memory:")
+DBInterface.execute(con, "CREATE TABLE t (id INTEGER, x DOUBLE, s VARCHAR)")
 
-**The appender is not vectorized on the Julia side.** One `ccall` per cell plus one
-per `end_row` (`appender.jl:77-124`); batching happens inside DuckDB's C appender.
-`duckdb_append_data_chunk` exists (`api.jl:7309`) but **no high-level Julia API uses
-it**. **C** This is the mechanical reason for the ~8 allocations per row measured on
-a 5-column table (§7.2).
+# any Tables.jl-shaped object works; a NamedTuple of column vectors is simplest.
+# registration is alias-based — no copy of the julia arrays is taken here
+cols = (id = Int32[1, 2, 3], x = [1.5, 2.5, 3.5], s = ["a", "b", "c"])
 
-### 4.3 Prepared-statement bind
+DuckDB.register_table(con, cols, "v_src")   # creates a VIEW over julia_tbl_scan
+try
+  DBInterface.execute(con, "INSERT INTO t SELECT id, x, s FROM \"v_src\"")
+finally
+  DuckDB.unregister_table(con, "v_src")     # always drop the view again
+end
+println(Tables.columntable(DBInterface.execute(con, "SELECT * FROM t ORDER BY id")))
 
-`Stmt` at `statement.jl:1-28`; binding dispatch via `duckdb_bind_internal`, driven by
-`bind_parameters` for positional (`statement.jl:79-87`) and named parameters
-(`statement.jl:89-113`). Bind failures **throw** `QueryException`
-(`statement.jl:82-84, 109-111`) — unlike the appender, this path is loud. **C**
+# the ceiling is create_logical_type coverage, and rejection is LOUD, at registration
+try
+  DuckDB.register_table(con, (id = Int32[1], u = [uuid4()]), "v_bad")
+catch e
+  println("UUID column -> ", first(split(sprint(showerror, e), '\n')))
+end
+```
 
-| Julia type | C call | Citation |
+```
+(id = Int32[1, 2, 3], x = [1.5, 2.5, 3.5], s = ["a", "b", "c"])
+UUID column -> Binder Error: Unsupported type for create_logical_type
+```
+
+**Registration is alias-based; the per-query scan is not.** Measured with `===`
+identity, `Tables.columntable(sa)` returns the very same array objects as
+`StructArrays.components(sa)` — no copies at registration
+(`verify_structarray_register.jl`). But each query over the view copies values
+element-by-element into DuckDB vectors (`table_scan.jl:49-56, 59-79`). The docs' "Note
+that the DataFrames are directly read by DuckDB – they are not inserted or copied into
+the database itself" (<https://duckdb.org/docs/lts/clients/julia.html>) is true for
+*storage* and false for *per-query cost*.
+
+> **Julia idiom.** A `StructArray` (StructArrays.jl) does not store an array of structs;
+> it stores one plain array per field and synthesizes the struct on access, so
+> `StructArrays.components(sa)` hands back the per-field arrays directly. That is why
+> tier 2 costs nothing at registration — the "leaf arrays" it registers are the arrays
+> the StructArray already held.
+> <https://juliaarrays.github.io/StructArrays.jl/stable/>
+
+Parallelism: `max_threads = ceil(rowcount / ROW_GROUP_SIZE)` (`table_scan.jl:138-145`),
+work handed out in `ROW_GROUP_SIZE` = `VECTOR_SIZE * 100` = 204,800-row blocks under a
+lock (`table_scan.jl:152-176`, `database.jl:107`).
+
+### 4.3 `register_flat` — struct columns (tier 2)
+
+Register the struct's leaf fields as flat columns and reassemble the struct in SQL.
+Boundary: list-typed fields cannot be registered, so structs containing lists stay on
+the literal path.
+
+```julia
+using DuckDB, Tables
+
+con = DBInterface.connect(DuckDB.DB, ":memory:")
+DBInterface.execute(con, "CREATE TABLE t (id INTEGER, loc STRUCT(x DOUBLE, y DOUBLE))")
+
+# the natural julia shape is a column of NamedTuples, which register_table REJECTS
+# (NamedTuple is not in create_logical_type coverage), so flatten it first
+locs = [(x = 1.0, y = 2.0), (x = 3.0, y = 4.0)]
+flat = (id = Int32[1, 2],
+        loc_x = [p.x for p in locs],   # comprehension: julia's list-comp
+        loc_y = [p.y for p in locs])
+
+DuckDB.register_table(con, flat, "v_leaves")
+try
+  # the struct is reassembled by the SQL struct literal {'field': expr, ...}; field
+  # names here must match the DDL's STRUCT field names exactly
+  DBInterface.execute(con,
+    "INSERT INTO t SELECT id, {'x': loc_x, 'y': loc_y} FROM \"v_leaves\"")
+finally
+  DuckDB.unregister_table(con, "v_leaves")
+end
+
+got = Tables.columntable(DBInterface.execute(con, "SELECT * FROM t ORDER BY id"))
+println(got)
+println("loc[1] is a ", typeof(got.loc[1]))
+```
+
+```
+(id = Int32[1, 2], loc = Union{Missing, NamedTuple{(:x, :y)}}[(x = 1.0, y = 2.0), (x = 3.0, y = 4.0)])
+loc[1] is a @NamedTuple{x::Float64, y::Float64}
+```
+
+Verified for flat structs, NULL struct rows (validity column + `CASE WHEN`), and nested
+struct-of-struct via recursive flattening (`verify_structarray_register.jl`).
+
+### 4.4 Prepared bind: the BLOB path (tier 3)
+
+`Stmt` at `statement.jl:1-28`; binding via `duckdb_bind_internal` dispatch, driven by
+`bind_parameters` (`statement.jl:79-113`). **Bind failures throw** `QueryException`
+(`statement.jl:82-84, 109-111`) — unlike the appender, this path is loud.
+
+| Julia type | C call | Source |
 |---|---|---|
 | `Bool` | `duckdb_bind_boolean` | `statement.jl:47` |
 | `Int8`–`Int64`, `UInt8`–`UInt64` | `duckdb_bind_int*` / `uint*` | `statement.jl:48-55` |
 | `Float32` / `Float64` | `duckdb_bind_float` / `_double` | `statement.jl:56-57` |
 | other `AbstractFloat` | widened to `Float64` | `statement.jl:46` |
-| `Date` | `duckdb_bind_date` via `value_to_duckdb` | `statement.jl:58`; `table_scan.jl:26` |
-| `Time` | `duckdb_bind_time` — float `/1000` then `convert(Int64, …)`: **`InexactError` on sub-µs** | `statement.jl:59`; `table_scan.jl:27` |
-| `DateTime` | `duckdb_bind_timestamp` | `statement.jl:60-61`; `table_scan.jl:28` |
+| `Date` | `duckdb_bind_date` | `statement.jl:58`, `table_scan.jl:26` |
+| `Time` | `duckdb_bind_time` — **`InexactError` on sub-µs** | `statement.jl:59`, `table_scan.jl:27` |
+| `DateTime` | `duckdb_bind_timestamp` | `statement.jl:60-61`, `table_scan.jl:28` |
 | `Missing` / `Nothing` | `duckdb_bind_null` | `statement.jl:62-63` |
 | `AbstractString` | `duckdb_bind_varchar_length` (correct `ncodeunits`) | `statement.jl:64-65` |
 | `Vector{UInt8}` | `duckdb_bind_blob` | `statement.jl:66` |
@@ -386,206 +652,282 @@ a 5-column table (§7.2).
 | `AbstractVector{T}` | list `Value` via `create_value` + `duckdb_bind_value` | `statement.jl:69-72` |
 | anything else | `println(val)` + `NotImplementedException` | `statement.jl:74-77` |
 
-**Bind gaps vs the appender**: no `Int128`, `UInt128`, `UUID`, `FixedDecimal`,
-interval — all throw. **C**
+**Gaps vs the appender**: no `Int128`, `UInt128`, `UUID`, `FixedDecimal`, interval.
+**But bind is the only working path for BLOB**, and it survives LIST at scale
+(4,000,000 values) where the appender dies.
 
-**But bind is the only working path for two things** (**M**):
+```julia
+using DuckDB, Tables
 
-- **BLOB** — exact byte round-trip including `0x00` and `0x27`, where the appender is
-  broken (§5.1.1).
-- **LIST at scale** — survived **4,000,000** list values over the same `create_value`
-  code path that segfaults the appender at ~1M (§5.1.4).
+con = DBInterface.connect(DuckDB.DB, ":memory:")
+DBInterface.execute(con, "CREATE TABLE t (id INTEGER, b BLOB)")
+payload = UInt8[0x00, 0x27, 0xAA, 0xFF]   # NUL and a quote: the awkward bytes
 
-### 4.4 Registered tables (and the flatten/reassemble variant)
+# WRONG — the appender's blob method throws before any C call: the autogenerated
+# wrapper declares `data` as Ref{Cvoid} (api.jl:7261) and Cvoid === Nothing, so julia
+# tries convert(Nothing, payload) (§5.1.1)
+ap = DuckDB.Appender(con, "t")
+try
+  DuckDB.append(ap, Int32(1)); DuckDB.append(ap, payload)
+catch e
+  println("appender -> ", sprint(showerror, e))
+finally
+  DuckDB.close(ap)
+end
 
-`register_table(con_or_db, tbl, name)` (`table_scan.jl:200-208`; aliased
-`register_data_frame` at `table_scan.jl:218`) stores `columntable(tbl)` in
-`db.registered_objects` and creates a SQL view
-`CREATE OR REPLACE VIEW "name" AS SELECT * FROM julia_tbl_scan('name')`
-(`table_scan.jl:201-205`). `unregister_table` drops it (`table_scan.jl:210-215`). **C**
+# RIGHT — prepare once, execute per row
+stmt = DBInterface.prepare(con, "INSERT INTO t VALUES (?, ?)")
+DBInterface.execute(stmt, (Int32(2), payload))
+DBInterface.close!(stmt)
 
-**Type ceiling.** The bind step strips `Missing` from the eltype (`table_result_type`,
-`table_scan.jl:19`) and calls `add_result_column` (`table_scan.jl:114`) →
-`create_logical_type` (`table_function.jl:38-39`). So a registered table's column
-eltypes are limited to `create_logical_type` coverage (`logical_type.jl:28-66`): **C**
-
-- **supported**: `String`/`AbstractString`, `Bool`, `Int8/16/32/64/128`,
-  `UInt8/16/32/64/128`, `Float32/64`, `Date`, `Time`, `DateTime`,
-  `FixedDecimal{Int16|32|64|128,s}` (`logical_type.jl:28-62`)
-- **rejected**: `UUID`, `Vector` (list columns), `NamedTuple` (structs), `Dict`,
-  `CompoundPeriod`, `Char`, `Symbol`, `Any`, … →
-  `NotImplementedException("Unsupported type for create_logical_type")`
-  (`logical_type.jl:64-66`)
-
-**Rejection happens at `register_table`, not at query time.** The study said
-otherwise; measured, the throw comes out of the registration call itself, because
-`register_table` creates a view and DuckDB binds the table function while creating
-it. Good news for codegen: unsupported column types surface immediately, not
-deferred to some later query. (`verify_structarray_register.jl`) **M**
-
-**Registration is genuinely alias-based; the scan is not.** Measured with `===`
-identity: `Tables.columntable(sa)` returns *the very same array objects* as
-`StructArrays.components(sa)` — no copies at registration. **M** But each query over
-the view copies values element-by-element into DuckDB vectors
-(`table_scan.jl:49-56, 59-79`) — **C**. The docs' "Note that the DataFrames are
-directly read by DuckDB – they are not inserted or copied into the database itself"
-(**D**) is true for *storage* and false for *per-query cost*.
-
-`StructArray` works through this path for flat and nullable-flat cases; nullable
-fields are fine because `table_scan.jl:19` strips `Missing` before building the
-logical type. **M**
-
-**Parallelism**: `max_threads = ceil(rowcount / ROW_GROUP_SIZE)`
-(`table_scan.jl:138-145`), with work handed out in `ROW_GROUP_SIZE`
-(= `VECTOR_SIZE * 100` = 204,800) row blocks under a lock (`table_scan.jl:152-176`,
-`database.jl:107`). **C**
-
-**`register_flat` (spike path E), measured end to end** (**M**): register the struct's
-leaf fields as flat columns, reassemble in SQL —
-
-```sql
-INSERT INTO t_nested SELECT id, {'x': loc_x, 'y': loc_y} FROM v_leaves
+# read-back asymmetry: you wrote Vector{UInt8}, you get Base.CodeUnits back, so
+# compare bytes with collect() rather than ==
+got = only(Tables.columntable(DBInterface.execute(con, "SELECT b FROM t")).b)
+println("read back  -> ", typeof(got), "  ", collect(got))
+println("round-trip -> ", collect(got) == payload)
 ```
 
-Verified for flat structs, NULL struct rows (validity column + `CASE WHEN`), and
-nested struct-of-struct via recursive flattening. **Boundary:** list-typed fields
-cannot be registered, so structs containing lists stay on the literal path.
+```
+appender -> cannot convert a value to nothing for assignment
+read back  -> Base.CodeUnits{UInt8, String}  UInt8[0x00, 0x27, 0xaa, 0xff]
+round-trip -> true
+```
 
-### 4.5 Literal SQL
+### 4.5 Appender: the UUID path (tier 4)
 
-Generated `INSERT … VALUES` text. The universal fallback, and the **only** path for
-maps, structs-containing-lists, and blobs with awkward bytes.
+Lifecycle: `Appender(db_or_con, table[, schema])` (`appender.jl:40-62`, C call
+`duckdb_appender_create` `api.jl:6687`) → one `append` per column, then `end_row`
+(`appender.jl:121-124`) → `flush` (`appender.jl:126-129`) → `close`
+(`appender.jl:72-75, 131`; destroy at `64-70`).
 
-Measured over the full type matrix (`literal_matrix.jl`, 27 cells, **all pass**),
-each type × {value, NULL}: bool, all int widths incl. hugeint 2^100 and unsigned,
-float/double, NaN/±Inf (`'nan'::DOUBLE` spellings), decimal, varchar with
-quote/newline/tab, blob with embedded `0x00` and `0x27` (`'\xAA…'::BLOB`), date,
-time(ms), timestamp(ms), timestamptz, timetz, uuid, enum, list-containing-NULL,
-struct, map, nested. `missing` serializes as `NULL` on every path tested. **M**
+> **Docs error.** The docs say "Appends are made in row-wise format. For every column,
+> an append() call should be made, after which the row should be finished by calling
+> flush()." (<https://duckdb.org/docs/lts/clients/julia.html>) That is wrong, and
+> contradicted by the docs' own example: rows are finished with `end_row()`
+> (`appender.jl:121-124`); `flush()` pushes buffered rows to the table
+> (`appender.jl:126-129`).
 
-**Two serializer requirements**, both measured, both silent-corruption bugs if missed:
+| Julia type | C call | Source | Status |
+|---|---|---|---|
+| `Bool` | `duckdb_append_bool` | `appender.jl:78` | ok |
+| `Int8`–`Int64` | `duckdb_append_int8/16/32/64` | `appender.jl:79-82` | ok |
+| `Int128` / `UInt128` | `duckdb_append_hugeint` / `_uhugeint` | `appender.jl:83-84` | ok |
+| `UInt8`–`UInt64` | `duckdb_append_uint8/16/32/64` | `appender.jl:85-88` | ok |
+| `Float32` / `Float64` | `duckdb_append_float` / `_double` | `appender.jl:89-90` | ok |
+| other `AbstractFloat` | widened to `Float64` | `appender.jl:77` | ok |
+| `Missing` / `Nothing` | `duckdb_append_null` | `appender.jl:91` | ok |
+| `AbstractString` | `duckdb_append_varchar` | `appender.jl:92` | ok |
+| `Base.UUID` | **stringified**, then varchar append | `appender.jl:93` | ok — exact round-trip |
+| `FixedDecimal` | **stringified**, then varchar append | `appender.jl:95` | ok — over-precision silently rounds |
+| `Vector{UInt8}` | `duckdb_append_blob` | `appender.jl:94` | **BROKEN** (§5.1.1) |
+| `Date` | `duckdb_append_date` | `appender.jl:97-98` | ok |
+| `Time` | `duckdb_append_time`, ns `÷ 1000` | `appender.jl:100` | **truncates** |
+| `DateTime` | `duckdb_append_timestamp` | `appender.jl:103-104` | ok |
+| `AbstractVector{T}` | `create_value` + `duckdb_append_value` | `appender.jl:106-114` | **SEGFAULTS at scale** (§5.1.4) |
+| anything else | `println(val)`, then `NotImplementedException` | `appender.jl:116-119` | throws |
 
-1. **Floats must be emitted in exponent notation** — `@sprintf("%.17e", v)`. A bare
-   decimal literal is parsed as `DECIMAL`, costing 1 ULP, and `::DOUBLE` does not fix
-   it. See §5.2.1. **M**
-2. **The serializer must be type-directed by the column's `DuckType`, not by the
-   Julia value type** — blob dispatch on `AbstractVector{UInt8}` collides with a
-   `UTINYINT[]` column under bare Julia dispatch. **M**
+Not appendable: intervals (`duckdb_append_interval` exists at `api.jl:7197` but is never
+wired up), structs/NamedTuples, Dicts/maps, nested lists.
 
-### 4.6 Combined write capability matrix
+ENUM columns take the label as a `String`; the C appender casts VARCHAR→ENUM. Invalid
+and **wrong-case** labels are silently lost (`verify_enum_appender.jl`) — see §5.1.2,
+which is the reason this tier needs guards.
 
-Merged from the spike's measured matrix, phase 1 verification, and phase 2's
-applicability matrix. ✅ works · ⚠️ works with a caveat · ❌ throws or corrupts.
+**The appender is not vectorized on the Julia side**: one `ccall` per cell plus one per
+`end_row` (`appender.jl:77-124`). `duckdb_append_data_chunk` exists (`api.jl:7309`) but
+no high-level Julia API uses it. That is why it costs ~8 Julia allocations per row on a
+5-column table (§7.2).
 
-| Type | appender | prepared bind | register | literal |
-|---|---|---|---|---|
-| BOOLEAN, all int/uint widths (incl. 128-bit) | ✅ | ⚠️ no 128-bit | ✅ | ✅ |
-| FLOAT / DOUBLE | ✅ | ✅ | ✅ | ⚠️ exponent notation required (§5.2.1) |
-| DECIMAL | ✅ ⚠️ silent rounding on over-precision | ❌ | ✅ | ✅ |
-| VARCHAR | ✅ | ✅ | ✅ | ✅ |
-| ENUM | ⚠️ label as String; invalid/wrong-case **silently lost** (§5.1.2) | ✅ via cast | ❌ | ✅ |
-| BLOB | ❌ **broken** (§5.1.1) | ✅ | ❌ | ✅ |
-| DATE | ✅ | ✅ | ✅ | ✅ |
-| TIME | ⚠️ ns→µs truncation | ⚠️ `InexactError` sub-µs | ⚠️ same as bind | ✅ |
-| TIMESTAMP | ✅ (ms contract) | ✅ | ✅ | ✅ |
-| TIMESTAMPTZ / TIMETZ | ✅ UTC contract | ✅ | — | ✅ `+00` literals |
-| UUID | ✅ (stringified) | ❌ | ❌ | ✅ |
-| LIST of primitives | ❌ **segfaults at ~1M** (§5.1.4) | ✅ (4M verified) | ❌ | ✅ |
-| LIST containing `missing` | ❌ | ❌ | ❌ | ✅ |
-| LIST, empty vector | ❌ **becomes NULL** (§5.1.5) | ❌ same | ❌ | ✅ |
-| nested LIST | ❌ | ❌ | ❌ | ✅ |
-| STRUCT | ❌ | ❌ | ❌ direct / ✅ via `register_flat` | ✅ |
-| MAP | ❌ | ❌ | ❌ | ✅ |
-| INTERVAL | ❌ | ❌ | ❌ | (read-only everywhere) |
-| ARRAY (fixed-size) | ❌ unreadable in 1.5.2 (§3.5) | ❌ | ❌ | ❌ |
+```julia
+using DuckDB, Dates, Tables  # DuckDB exports DBInterface but NOT Tables
+
+con = DBInterface.connect(DuckDB.DB, ":memory:")
+DBInterface.execute(con, "CREATE TABLE t (id INTEGER, s VARCHAR, d DATE)")
+
+rows = [(Int32(1), "alpha", Date(2026, 1, 2)),
+        (Int32(2), "beta", Date(2026, 3, 4)),
+        (Int32(3), missing, Date(2026, 5, 6))]
+
+# the appender's WHOLE lifetime must sit inside the transaction body, with
+# try/finally guaranteeing close() runs before the transaction unwinds. an appender
+# that outlives the block flushes at GC time — after a rollback (§5.1.3)
+DBInterface.transaction(con) do
+  ap = DuckDB.Appender(con, "t")
+  try
+    for r in rows
+      for v in r
+        DuckDB.append(ap, v)   # one call per CELL, dispatching on the julia type
+      end
+      DuckDB.end_row(ap)       # NOT flush() — the docs are wrong about this
+    end
+    DuckDB.flush(ap)           # push buffered rows into the table
+  finally
+    DuckDB.close(ap)           # flushes INSIDE the still-open transaction
+  end
+end
+
+println(Tables.columntable(DBInterface.execute(con, "SELECT * FROM t ORDER BY id")))
+```
+
+```
+(id = Int32[1, 2, 3], s = Union{Missing, String}["alpha", "beta", missing], d = [Date("2026-01-02"), Date("2026-03-04"), Date("2026-05-06")])
+```
+
+> **Julia idiom.** `f(x) do … end` passes an anonymous function as `f`'s *first*
+> argument — so `DBInterface.transaction(con) do … end` calls
+> `transaction(anonymous_fn, con)` (`transaction.jl:2-16`).
+
+### 4.6 Literal SQL — the universal fallback (tier 5)
+
+Generated `INSERT … VALUES` text. The only path for maps, structs containing lists, and
+blobs with awkward bytes.
+
+Measured over the full type matrix (`literal_matrix.jl`, 27 cells, all pass), each type
+× {value, NULL}: bool, all int widths incl. hugeint 2^100 and unsigned, float/double,
+NaN/±Inf (`'nan'::DOUBLE` spellings), decimal, varchar with quote/newline/tab, blob with
+embedded `0x00` and `0x27`, date, time(ms), timestamp(ms), timestamptz, timetz, uuid,
+enum, list-containing-NULL, struct, map, nested. `missing` serializes as `NULL`
+everywhere.
+
+**Two serializer requirements**, both silent-corruption bugs if missed:
+
+1. **Floats must be emitted in exponent notation** — `@sprintf("%.17e", v)` (§5.2.1).
+2. **The serializer must be type-directed by the column's `DuckType`, not by the Julia
+   value type** — blob dispatch on `AbstractVector{UInt8}` collides with a `UTINYINT[]`
+   column under bare Julia dispatch.
+
+The working serializer lives in `bench_common.jl` (`sqllit`); reuse it rather than
+rewriting.
 
 ### 4.7 Paths not to use
 
-- **`DuckDB.load!(con, tbl, table[, schema])`** (`old_interface.jl:28-33`) and
-  **`DuckDB.appendDataFrame`** (`old_interface.jl:14-21`): both use the **fixed temp
-  name `__append_df`**, so they are not safe under concurrency, and both inherit the
-  registered-table type limits. **C**
-- **`DBInterface.lastrowid`**: always throws (`result.jl:845-847`). **C**
-- **Per-row parameterized `INSERT`s**: slowest path measured, and narrower type
-  support than the appender. **M** + **C**
+- **`DuckDB.load!`** (`old_interface.jl:28-33`) and **`DuckDB.appendDataFrame`**
+  (`old_interface.jl:14-21`) both use the fixed temp name `__append_df`, so they are
+  unsafe under concurrency, and both inherit the registered-table type limits.
+- **`DBInterface.lastrowid`**: always throws (`result.jl:845-847`).
+- **Per-row parameterized `INSERT`s**. `Inferred:` these should be the slowest bulk
+  option — each execute re-binds, builds a `PendingQueryResult`, pumps tasks and
+  constructs a `QueryResult` with per-column `LogicalType` allocation
+  (`result.jl:711-740, 686-708, 26-30`). **This was not benchmarked**: the sweep's four
+  paths are `appender`, `register`, `register_flat`, `literal`
+  (`bench_common.jl:140`), and the measured `literal` path is *batched* at 1000 rows per
+  statement (`bench_common.jl:225`), not per-row. Treat the ranking as reasoning, not
+  measurement.
 
 ---
 
-## 5. Confirmed defects and gotchas
+## 5. Defects and traps
 
-### 5.1 DuckDB.jl driver defects
+### 5.1 Driver defects
 
-#### 5.1.1 `duckdb_append_blob` is unusable — `api.jl:7261` **M**
+#### 5.1.1 `duckdb_append_blob` is unusable
 
-`api.jl:7257-7266` declares the `data` argument as `Ref{Cvoid}`. `Cvoid === Nothing`,
-so Julia attempts `convert(Nothing, payload)` and **throws before any C call
-happens**: `cannot convert a value to nothing for assignment`. The C API argument is
-`void*` = `Ptr{Cvoid}`.
+`api.jl:7257-7266` declares the `data` argument as `Ref{Cvoid}`. `Cvoid === Nothing`, so
+Julia attempts `convert(Nothing, payload)` and **throws before any C call happens**:
+`cannot convert a value to nothing for assignment`. The C argument is `void*` =
+`Ptr{Cvoid}`. Re-declaring the same entry point with `Ptr{Cvoid}` returns
+`DuckDBSuccess (0)`, writes the row, and round-trips every byte
+(`verify_blob_appender.jl`).
 
-Proof it is the wrapper and not the engine: re-declaring the same C entry point with
-`Ptr{Cvoid}` returns `DuckDBSuccess (0)`, writes 1 row, and round-trips all bytes
-exactly. (`verify_blob_appender.jl`)
+> **Julia idiom.** In a `ccall` signature, `Ref{T}` means "Julia will box-and-pin a `T`
+> and pass its address"; `Ptr{T}` means "this value already *is* an address". The
+> defect is exactly that confusion, at `api.jl:7261`.
 
-Note `api.jl` is autogenerated (`scripts/generate_c_api_julia.py`, per its own header
-at `api.jl:1-9`), so the fix belongs in the generator's type map — and **other
-`Ref{Cvoid}` arguments in `api.jl` may carry the same defect**. **I** (not surveyed).
+`api.jl` is autogenerated (`scripts/generate_c_api_julia.py`, per `api.jl:1-9`), so the
+fix belongs in the generator's type map. `Inferred:` other `Ref{Cvoid}` arguments in
+`api.jl` may carry the same defect — not surveyed.
 
-**Do not** substitute `append(::String)` as a blob workaround. Measured: ASCII bytes
-round-trip (the C appender does cast VARCHAR→BLOB), but valid non-UTF-8 bytes are
-**silently lost**, and bytes containing `0x00` throw
-`ArgumentError: embedded NULs are not allowed in C strings`. Use the prepared bind or
-the literal path.
+**Do not** substitute `append(::String)` as a workaround: ASCII bytes round-trip (the C
+appender does cast VARCHAR→BLOB), but valid non-UTF-8 bytes are **silently lost**, and
+bytes containing `0x00` throw `ArgumentError: embedded NULs are not allowed in C
+strings`. Use prepared bind ([§4.4](#44-prepared-bind-the-blob-path-tier-3)).
 
-#### 5.1.2 Appender errors are silent, and a failed cell misaligns later columns **M**
+#### 5.1.2 Appender errors are silent, and a failed cell misaligns later columns
 
-`appender.jl:77-129` discards **every** `duckdb_state` return code; no method checks
-for `DuckDBError` or calls `duckdb_appender_error` after creation. **C** A cast
-failure or constraint violation is invisible at the Julia level.
+`appender.jl:77-129` discards **every** `duckdb_state` return code; no method checks for
+`DuckDBError` or calls `duckdb_appender_error` after creation. A cast failure or
+constraint violation is invisible at the Julia level.
 
-That much was known. The serious part is new: **a failed `append` does not advance
-the appender's internal column cursor**, so the next value is written into the slot
-the failed one should have filled.
+The serious part: **a failed `append` does not advance the appender's internal column
+cursor**, so the next value lands in the slot the failed one should have filled.
+Appending `[(1,"sad"), (2,"banana"), (3,"ok"), (4,"happy")]` into `(id INTEGER, m mood)`
+yields `[(1,"sad"), (2,"ok"), (4,"happy")]` — row `id=2` survives **carrying row 3's
+enum value** (`verify_enum_appender.jl`). In a single-column table the same mechanism
+merely looks like "the bad row was dropped", which is why this needed a multi-column
+probe.
 
-Appending `[(1,"sad"), (2,"banana"), (3,"ok"), (4,"happy")]` into
-`(id INTEGER, m mood)` produced:
+**A follow-up `COUNT(*)` is necessary but not sufficient.** It detects that something
+went wrong, but surviving rows may already pair the wrong values together, and a count
+could re-align if the number of failures is a multiple of the column count.
 
-```
-[(1,"sad"), (2,"ok"), (4,"happy")]
-```
-
-Row `id=2` **survived carrying row 3's enum value.** The integer `3` was then offered
-to the ENUM column, producing `Failed to cast value: Unimplemented type for cast
-(INTEGER -> ENUM(...))`. In a single-column table the same mechanism merely looks
-like "the bad row was dropped", which is why this needed a multi-column probe.
-
-**Consequence: a follow-up `COUNT(*)` is necessary but not sufficient.** It detects
-that something went wrong, but surviving rows may already pair the wrong values
-together, and a count could in principle re-align if the number of failures is a
-multiple of the column count.
-
-**Detection recipe** — `duckdb_appender_error` returns only the *latest* error, so a
-later failure overwrites an earlier one and checking once at the end misattributes
-the cause. Poll after each step:
+Poll after every step — the handle keeps only the **latest** error, so one check at the
+end misattributes the cause:
 
 ```julia
-# our own ccall: the driver's wrapper returns Cstring, and its only caller
-# (appender.jl:46) passes the Ref box rather than the handle
-p = ccall((:duckdb_appender_error, DuckDB.libduckdb), Ptr{UInt8}, (Ptr{Cvoid},), ap.handle)
-err = p == C_NULL ? nothing : unsafe_string(p)
+using DuckDB, Tables
+
+# the driver's own wrapper works if you hand it the handle. its only internal caller
+# (appender.jl:46) passes the Ref box instead, which is why the driver never surfaces
+# these errors itself — a hand-rolled ccall is NOT required
+function appender_error(ap::DuckDB.Appender)
+  ap.handle == C_NULL && return nothing
+  p = DuckDB.duckdb_appender_error(ap.handle)   # returns Cstring
+  return p == C_NULL ? nothing : unsafe_string(p)
+end
+
+function checked_append(ap, v)
+  DuckDB.append(ap, v)
+  e = appender_error(ap); e === nothing || error("append($(repr(v))) failed: $e")
+end
+
+function checked_end_row(ap)
+  DuckDB.end_row(ap)
+  e = appender_error(ap); e === nothing || error("end_row failed: $e")
+end
+
+con = DBInterface.connect(DuckDB.DB, ":memory:")
+DBInterface.execute(con, "CREATE TYPE mood AS ENUM ('sad','ok','happy')")
+DBInterface.execute(con, "CREATE TABLE t (id INTEGER, m mood)")
+rows = [(Int32(1), "sad"), (Int32(2), "banana"), (Int32(3), "ok"), (Int32(4), "happy")]
+
+# WRONG — unchecked: no exception, and the surviving rows are scrambled
+ap = DuckDB.Appender(con, "t")
+for (i, m) in rows
+  DuckDB.append(ap, i); DuckDB.append(ap, m); DuckDB.end_row(ap)
+end
+DuckDB.flush(ap); DuckDB.close(ap)
+println("WRONG -> ", collect(zip(Tables.columntable(
+  DBInterface.execute(con, "SELECT id, m FROM t ORDER BY id"))...)))
+
+# RIGHT — polled: the bad label raises at the point of failure
+DBInterface.execute(con, "DELETE FROM t")
+ap2 = DuckDB.Appender(con, "t")
+try
+  for (i, m) in rows
+    checked_append(ap2, i); checked_append(ap2, m); checked_end_row(ap2)
+  end
+  DuckDB.flush(ap2)
+catch e
+  println("RIGHT -> raised: ", sprint(showerror, e))
+finally
+  DuckDB.close(ap2)
+end
 ```
 
-Or validate values against the dictionary's types **before** they reach the appender.
-Do both, and still check the row count.
+```
+WRONG -> Tuple{Int32, String}[(1, "sad"), (2, "ok"), (4, "happy")]
+RIGHT -> raised: append("banana") failed: Failed to cast value: Could not convert string 'banana' to UINT8
+```
 
-*Incidental, unmeasured* (**C**, reachable only on `duckdb_appender_create` failure):
-`appender.jl:46` passes the `Ref{duckdb_appender}` box instead of `handle[]` and
-renders the result with `string(error_ptr)`, so a failed appender *creation* would
-report a pointer rather than a message.
+*Incidental, unmeasured* (`appender.jl:46`, reachable only on
+`duckdb_appender_create` failure): that call passes the `Ref{duckdb_appender}` box
+instead of `handle[]` and renders the result with `string(error_ptr)`, so a failed
+appender *creation* would report a pointer rather than a message.
 
-#### 5.1.3 Buffered appender rows escape the transaction and leak at GC time **M**
+#### 5.1.3 Buffered appender rows escape the transaction and leak at GC time
 
-Flushed rows **do** participate in the connection's transaction — the study's
-*Inferred* claim is confirmed:
+Flushed rows **do** participate in the connection's transaction
+(`verify_appender_transaction.jl`):
 
 | Scenario | Rows | Reading |
 |---|---|---|
@@ -593,16 +935,16 @@ Flushed rows **do** participate in the connection's transaction — the study's
 | append + flush inside txn, ROLLBACK | 0 | **flushed rows ARE in the transaction** |
 | append (no flush), COMMIT, then `close()` | 0 → 5 after close | land **after** commit, outside the txn |
 | append (no flush), ROLLBACK, then `close()` | 0 → 5 after close | **5 rows survived a rollback** |
-| bulk-replace `BEGIN; DELETE; append+flush; error` | original 5 intact | atomic when done correctly |
+| `BEGIN; DELETE; append+flush; error` | original 5 intact | atomic when done correctly |
 | second `Connection` reading during an open txn | 0, then 5 after commit | properly isolated, no dirty reads |
 
 **There is no discard path.** `api.jl:6820` documents `duckdb_appender_destroy` as
 "Closes the appender by flushing all intermediate states to the table and destroying
-it." (**C**) Buffered rows cannot be thrown away — the only lever is *when* the flush
-happens relative to the transaction.
+it." Buffered rows cannot be thrown away; the only lever is *when* the flush happens
+relative to the transaction.
 
-Worse, `appender.jl:56` registers a finalizer, so an appender abandoned on an error
-path is closed by the **GC** at an arbitrary later time:
+Worse, `appender.jl:56` registers a finalizer, so an appender abandoned on an error path
+is closed by the **GC** at an arbitrary later time:
 
 ```
 7b. counter-example: appender abandoned to the finalizer
@@ -610,175 +952,217 @@ path is closed by the **GC** at an arbitrary later time:
     rows after forced GC      : 5     <- appeared post-rollback, non-deterministically
 ```
 
-**Mitigation, measured to hold**: keep the appender's entire lifetime inside the
-transaction body, with `try`/`finally` guaranteeing `close()` runs *before* the
-transaction unwinds.
+Mitigation: the `try`/`finally` pattern in
+[§4.5](#45-appender-the-uuid-path-tier-4), measured to leave 0 rows after rollback even
+under two forced `GC.gc()` calls.
 
-```julia
-DBInterface.transaction(con) do
-  ap = DuckDB.Appender(con, "t")
-  try
-    # append rows...
-  finally
-    DuckDB.close(ap)   # flushes INSIDE the still-open transaction
-  end
-end
-```
-
-Generated code must **never** let an `Appender` outlive the transaction body. The
-failure is silent, delayed, and does not reproduce reliably under test.
-
-#### 5.1.4 Appending LIST values segfaults the process **M**
+#### 5.1.4 Appending LIST values segfaults the process
 
 | Mode | Result |
 |---|---|
 | appender + LIST, GC left to fire naturally | **SIGSEGV**, reproducibly, at ~1.0–1.2M list appends |
 | prepared bind + LIST (same `create_value`) | **survived 4,000,000 list values** |
 
-Crash sites observed inside `libduckdb`:
-`LogicalType::LogicalType(LogicalType const&)` and `StructType::GetChildTypes` — a
-`LogicalType` read after it is no longer valid. (`verify_list_appender_gc.jl`)
+Crash sites inside `libduckdb`: `LogicalType::LogicalType(LogicalType const&)` and
+`StructType::GetChildTypes` — a `LogicalType` read after it is no longer valid
+(`verify_list_appender_gc.jl`).
 
-This is strictly worse than a missing capability. The spike and the study both
-recorded list appends as working (`appender.jl:106-114`) — and they do, at the scales
-anyone tests interactively. The failure needs roughly a million appends, which is
-exactly the bulk-load case codegen would generate. **Because the process dies, no
-amount of row-count or error checking in generated code can recover from it.**
+This is worse than a missing capability. The spike and the study both recorded list
+appends as working (`appender.jl:106-114`), and they do at the scales anyone tests
+interactively; the failure needs roughly a million appends, which is exactly the
+bulk-load case codegen generates. **Because the process dies, no amount of row-count or
+error checking in generated code can recover from it.**
 
-*Hypotheses tested and NOT confirmed* — recorded so they are not re-run:
+*Hypotheses tested and NOT confirmed*, recorded so they are not re-run:
 
 - **H1 — GC finalizes `type`/`values` during the ccall.** `value.jl:52-56` reads
   `type.handle` plus each child handle and passes them to `duckdb_create_list_value`
-  with no `GC.@preserve`; both are finalizer-owned (`logical_type.jl:10`,
-  `value.jl:9`). *Tested:* forcing `GC.gc()` between batches, and disabling the GC
-  entirely. Both survived — but **both arms were uninformative**: a forced collection
-  at a safe point cannot exercise a race inside a ccall, and disabling the GC removes
-  finalizers altogether.
-- **H2 — the appender retains the `duckdb_value` past `append` while Julia destroys
-  it at scope exit.** Would explain why bind survives (execute consumes the value
-  before returning) and the appender does not. *Tested:* forcing GC while rows are
-  still buffered, pre-flush. Survived — but that run performed only ~40k appends
-  against a ~1M crash threshold, so it is **underpowered, not a refutation**.
+  with no `GC.@preserve`; both are finalizer-owned (`logical_type.jl:10`, `value.jl:9`).
+  *Tested:* forcing `GC.gc()` between batches, and disabling the GC entirely. Both
+  survived — but **both arms were uninformative**: a forced collection at a safe point
+  cannot exercise a race inside a ccall, and disabling the GC removes finalizers.
+- **H2 — the appender retains the `duckdb_value` past `append`.** Would explain why bind
+  survives (execute consumes the value before returning). *Tested:* forcing GC while
+  rows are still buffered. Survived — but that run performed ~40k appends against a ~1M
+  threshold, so it is **underpowered, not a refutation**.
 
-Root-causing needs C++-level debugging of `libduckdb`, which `goal.md` puts out of
-scope.
+Root-causing needs C++-level debugging of `libduckdb`, which `goal.md` puts out of scope.
 
-#### 5.1.5 List value bugs: empty → NULL, non-ASCII truncation **C**
+#### 5.1.5 List value bugs: empty vector to NULL on append, non-ASCII truncation
 
-- An **empty Julia vector appends/binds as `NULL`, not `[]`** (`appender.jl:108-111`).
+- An **empty Julia vector appends as `NULL`, not `[]`** (`appender.jl:108-111`). This is
+  the *appender's* behaviour only — `statement.jl:69-72` has no length check and
+  prepared bind writes a real empty list. Measured: bind → `xs=[[]]`, `isnull=false`,
+  `len=0`; append → `xs=[missing]`, `isnull=true`.
 - **Non-ASCII strings inside written lists are truncated**: `create_value` uses
   `duckdb_create_varchar_length(val, length(val))` (`value.jl:51`) — `length` counts
   *characters*, not bytes. Scalar string bind is correct (`ncodeunits`,
   `statement.jl:65`).
-- Lists containing `missing` and nested lists cannot be written at all
-  (`value.jl:52-56` + `logical_type.jl:64-66`).
+- Lists containing `missing` and nested lists cannot be written by any binding path
+  (`value.jl:52-56`, `logical_type.jl:64-66`).
+
+#### 5.1.6 A streamed chunk is not a working Tables.jl source
+
+The driver declares `Tables.columnaccess` and `isrowtable` true for `QueryResultChunk`
+but defines no `getcolumn`, and its `Tables.schema` method references a field `q` the
+struct does not have (`result.jl:771-782`). Two accessors throw; the third returns a
+**silently wrong answer**.
+
+```julia
+using DuckDB, Tables
+
+con = DBInterface.connect(DuckDB.DB, ":memory:")
+DBInterface.execute(con, "CREATE TABLE t AS SELECT i::INTEGER AS id FROM range(4) tbl(i)")
+q = DBInterface.execute(con, "SELECT * FROM t", DuckDB.StreamResult)
+chunk, _ = iterate(Tables.partitions(q))
+
+# WRONG — columnaccess is declared true, so Tables falls through to getproperty
+try; Tables.getcolumn(chunk, :id); catch e; println("getcolumn  -> ", first(split(sprint(showerror,e),'\n'))); end
+try; Tables.schema(chunk);         catch e; println("schema     -> ", first(split(sprint(showerror,e),'\n'))); end
+println("columnnames-> ", Tables.columnnames(chunk), "   <- no throw, just wrong")
+
+# RIGHT — Tables.columns(chunk) returns the NamedTuple you wanted
+println("columns.id -> ", Tables.columns(chunk).id)
+```
+
+```
+getcolumn  -> FieldError: type DuckDB.QueryResultChunk has no field `id`, available fields: `tbl`
+schema     -> FieldError: type DuckDB.QueryResultChunk has no field `q`, available fields: `tbl`
+columnnames-> (:tbl,)   <- no throw, just wrong
+columns.id -> Int32[0, 1, 2, 3]
+```
+
+`columnnames` returning `(:tbl,)` is the dangerous one: any generated streaming reader
+using ordinary Tables.jl accessors gets one phantom column instead of an error.
+**Generated streaming readers must go through `Tables.columns(chunk)` only.**
 
 ### 5.2 DuckDB engine behaviour (not driver bugs)
 
-#### 5.2.1 A bare decimal literal loses 1 ULP on DOUBLE **M**
+#### 5.2.1 A bare decimal literal loses 1 ULP on DOUBLE
 
-Caught by the benchmark harness's own content gate at `flat` / 1M / `literal`:
+Caught by the benchmark harness's content gate at `flat` / 1M / `literal`:
 
 ```
 CONTENT MISMATCH: column :x row 500000 —
   expected 0.11914626526441173, got 0.11914626526441172
 ```
 
-Inserting the Float64 `0.11914626526441173`:
+The literal is parsed as `DECIMAL(18,17)` **first** and only then converted; 17
+fractional digits cannot uniquely identify a Float64, so `::DOUBLE` does not help.
+Adding digits does not help either — the problem is the type the parser chooses.
 
-| Literal form | Reads back as | Exact? |
+```julia
+using DuckDB, Tables, Printf
+
+con = DBInterface.connect(DuckDB.DB, ":memory:")
+DBInterface.execute(con, "CREATE TABLE t (tag VARCHAR, x DOUBLE)")
+v = 0.11914626526441173
+
+# WRONG — bare literal, and the ::DOUBLE cast that looks like it should save you
+DBInterface.execute(con, "INSERT INTO t VALUES ('naive', $(string(v)))")
+DBInterface.execute(con, "INSERT INTO t VALUES ('cast', $(string(v))::DOUBLE)")
+
+# RIGHT — %.17e forces the DOUBLE parser directly
+DBInterface.execute(con, "INSERT INTO t VALUES ('e17', $(@sprintf("%.17e", v)))")
+
+got = Tables.columntable(DBInterface.execute(con, "SELECT tag, x FROM t"))
+for (tag, x) in zip(got.tag, got.x)
+  @printf("%-6s %.17g  exact=%s  ulp_delta=%d\n", tag, x, x === v,
+          reinterpret(Int64, x) - reinterpret(Int64, v))
+end
+println("typeof(bare literal) = ",
+        only(Tables.columntable(DBInterface.execute(con, "SELECT typeof($(string(v))) t")).t))
+```
+
+```
+naive  0.11914626526441172  exact=false  ulp_delta=-1
+cast   0.11914626526441172  exact=false  ulp_delta=-1
+e17    0.11914626526441173  exact=true  ulp_delta=0
+typeof(bare literal) = DECIMAL(18,17)
+```
+
+Verified exact over 2005 values including `0.0`, `-0.0`, `1e308`, `5e-324` and `1/3` —
+0 mismatches, for both the exponent form and the quoted-string form. NaN/±Inf were
+already special-cased and are unaffected. This is a DuckDB behaviour, not a DuckDB.jl
+bug, so it is not an upstream candidate for the driver — but every generated SQL writer
+hits it.
+
+#### 5.2.2 Identifier case rules
+
+From <https://duckdb.org/docs/current/sql/dialect/keywords_and_identifiers.html>:
+
+> "Identifiers in DuckDB are always case-insensitive, similarly to PostgreSQL. However,
+> unlike PostgreSQL (and some other major SQL implementations), DuckDB also treats
+> quoted identifiers as case-insensitive."
+>
+> "While DuckDB treats identifiers in a case-insensitive manner, it preserves the cases
+> of these identifiers."
+>
+> "In case of a conflict, when the same identifier is spelt with different cases, one
+> will be selected randomly."
+
+Comparison is ASCII-based, so `col_A` and `col_a` are equal but `col_á` is not.
+
+Measured consequences: result sets use the **declared** column spelling regardless of
+query spelling, even when quoted, but an explicit `AS` alias's spelling wins (shown in
+[§3.3](#33-materialized-reads)). Also measured: the engine rejects `CREATE TYPE` for
+built-in type names (`decimal`/`DECIMAL`/`varchar`/`int`/`text`) with
+`Catalog Error: Type with name "…" already exists!`, in any case — so
+typedef-shadows-builtin needs no keyword list in dbdict, the engine enforces it.
+
+### 5.3 API traps
+
+| # | Trap | Source |
 |---|---|---|
-| `0.11914626526441173` | `FixedDecimal{Int64,17}` | no — it is not even a DOUBLE |
-| `0.11914626526441173::DOUBLE` | `Float64` | **no — 1 ULP low** |
-| `%.17g` digits, bare | `FixedDecimal{Int64,17}` | no |
-| `%.17g` digits + `::DOUBLE` | `Float64` | **no — 1 ULP low** |
-| `1.19146265264411730e-01` (exponent form) | `Float64` | **yes** |
-| `'0.11914626526441173'::DOUBLE` (quoted) | `Float64` | **yes** |
-
-The cast does not help because the literal is parsed as `DECIMAL(_,17)` **first** and
-only then converted; 17 fractional digits cannot uniquely identify a Float64. Adding
-digits does not help either — the problem is the type the parser chooses, not the
-precision written.
-
-**Fix**: emit `@sprintf("%.17e", v)`. Verified exact over 2005 values including
-`0.0`, `-0.0`, `1e308`, `5e-324`, and `1/3` — 0 mismatches, for both the exponent form
-and the quoted-string form. NaN/±Inf were already special-cased and are unaffected.
-
-This is a **DuckDB** behaviour, not a DuckDB.jl bug, so it is not an upstream-issue
-candidate for the driver — but any generated SQL writer hits it.
-
-#### 5.2.2 Identifier case rules **M** + docs
-
-Keywords and identifiers are both case-insensitive — **including quoted identifiers**,
-unlike PostgreSQL — case-preserving, compared as ASCII; a same-name-different-case
-conflict means "one will be selected randomly". Measured consequences: result sets use
-the **declared** column spelling regardless of query spelling (even when quoted), but
-an explicit `AS` alias's spelling wins. Generated readers should therefore alias every
-column with the dict spelling, making Julia-side names deterministic.
-
-Also measured: the engine rejects `CREATE TYPE` for built-in type names
-(`decimal`/`DECIMAL`/`varchar`/`int`/`text`) with a Catalog Error, in any case — so
-typedef-shadows-builtin needs no keyword list in dbdict; the engine enforces it.
-
-### 5.3 API asymmetries and traps
-
-| # | Trap | Evidence |
-|---|---|---|
-| 1 | **BLOB asymmetry**: write `Vector{UInt8}`, read back `Base.CodeUnits{UInt8,String}`. Round-trip comparison needs `collect`/byte compare | **M** + **C** `ctypes.jl:409` |
-| 2 | **UUID / DECIMAL write as strings** via the appender, relying on C-appender casts; read back as `UUID` / `FixedDecimal`. Bind supports neither | **C** `appender.jl:93, 95` |
-| 3 | **`Union{Missing,T}` schema vs concrete arrays** — see §3.7 | **C** `result.jl:29, 385-402` |
-| 4 | **Single-pass results**: mixing `Tables.partitions`/`nextDataChunk` with `Tables.columns` throws | **C** `result.jl:545-551, 800-807` |
-| 5 | **Duplicate result column names are renamed** `name`, `name_1`, `name_2`, … | **C** `result.jl:14-24` |
-| 6 | **Multi-statement SQL** fails under `DBInterface.execute`; use `DuckDB.query` | **D** + **C** `result.jl:891-906` |
-| 7 | **Failure-mode noise**: unsupported append/bind values are `println`ed to stdout before the throw | **C** `appender.jl:117`, `statement.jl:75` |
-| 8 | **`DBInterface.transaction` commits outside its `try`** — if `COMMIT` itself fails, no rollback is attempted | **C** `transaction.jl:4-11` |
+| 1 | **BLOB asymmetry**: write `Vector{UInt8}`, read back `Base.CodeUnits{UInt8,String}`. Compare with `collect` | `ctypes.jl:409` |
+| 2 | **UUID / DECIMAL write as strings** via the appender, relying on C-appender casts; bind supports neither | `appender.jl:93, 95` |
+| 3 | **`Union{Missing,T}` schema vs concrete arrays** — [§3.8](#38-nullability) | `result.jl:29, 385-402` |
+| 4 | **Single-pass results**: mixing `Tables.partitions`/`nextDataChunk` with `Tables.columns` throws | `result.jl:545-551, 800-807` |
+| 5 | **Duplicate result column names are silently renamed** `name`, `name_1`, `name_2`, … — a reader can bind the wrong column | `result.jl:14-24` |
+| 6 | **Multi-statement SQL** fails under `DBInterface.execute`; use `DuckDB.query` | `result.jl:891-906` |
+| 7 | **Unsupported append/bind values are `println`ed to stdout** before the throw | `appender.jl:117`, `statement.jl:75` |
+| 8 | **`DBInterface.transaction` commits outside its `try`** — a failing `COMMIT` gets no rollback attempt | `transaction.jl:4-11` |
+| 9 | **A streamed chunk's Tables.jl accessors are broken** — [§5.1.6](#516-a-streamed-chunk-is-not-a-working-tablesjl-source) | `result.jl:771-782` |
 
 ### 5.4 Upstream-issue candidates
 
-Four, ranked. **Decision 2026-07-26 (user): file all four upstream.** Filing itself
-is a follow-up task, not part of this session — this is the recorded intent plus the
-material a report needs.
+**Decision 2026-07-26 (user): file all five.** Filing is a follow-up task, not part of
+this session — this records the intent and the material a report needs.
 
-| Rank | Issue | File? | Why it ranks here | Reproducer |
-|---|---|---|---|---|
-| 1 | **LIST append segfaults** (§5.1.4) | ✅ yes | A supported API kills the process under ordinary bulk use, and a working alternative (bind) shares the same `create_value` path — so it is both severe and well-isolated for a reporter | `verify_list_appender_gc.jl` (`natural` mode) |
-| 2 | **`duckdb_append_blob` unusable** (§5.1.1) | ✅ yes | Clear one-word type bug with a proven fix (`Ref{Cvoid}` → `Ptr{Cvoid}` at `api.jl:7261`); belongs in the **generator's** type map (`scripts/generate_c_api_julia.py`), and sibling `Ref{Cvoid}` wrappers may share it | `verify_blob_appender.jl` |
-| 3 | **Silent appender errors + column misalignment** (§5.1.2) | ✅ yes | Silent data corruption. Larger fix (every return code is discarded), but the misalignment behaviour makes it a correctness issue, not a nicety | `verify_enum_appender.jl` |
-| 4 | **Empty-vector→NULL and list non-ASCII truncation** (§5.1.5) | ✅ yes | Two small, independent, easily-patched bugs (`length` vs `ncodeunits` at `value.jl:51`; `appender.jl:108-111`) | code-cited; no dedicated script |
+| Rank | Issue | Why it ranks here | Reproducer |
+|---|---|---|---|
+| 1 | **LIST append segfaults** (§5.1.4) | A supported API kills the process under ordinary bulk use, and a working alternative (bind) shares the same `create_value` path | `verify_list_appender_gc.jl` |
+| 2 | **`duckdb_append_blob` unusable** (§5.1.1) | One-word type bug with a proven fix; belongs in the generator's type map, and sibling wrappers may share it | `verify_blob_appender.jl` |
+| 3 | **Silent appender errors + column misalignment** (§5.1.2) | Silent data corruption; larger fix, but a correctness issue rather than a nicety | `verify_enum_appender.jl` |
+| 4 | **Streamed chunk is a broken Tables.jl source** (§5.1.6) | Declares `columnaccess` true, then returns a wrong column list with no error | §5.1.6 snippet |
+| 5 | **Empty-vector→NULL and list non-ASCII truncation** (§5.1.5) | Two small independent bugs (`length` vs `ncodeunits`) | code-cited |
 
-When filing, note the environment precisely (§2): DuckDB.jl 1.5.2 with **DuckDB_jll
-1.5.4+0** — not the 1.5.2 jll that the compat bound suggests. Issues 1 and 4 concern
-the shared `create_value` path and could reasonably be filed together; 2 and 3 are
-independent.
+When filing, note the environment precisely: DuckDB.jl 1.5.2 with **DuckDB_jll
+1.5.4+0**, not the 1.5.2 jll the compat bound suggests. Issues 1 and 5 concern the
+shared `create_value` path and could be filed together.
 
 ---
 
 ## 6. Transactions and connections
 
-All transaction support is SQL-based; there is no C transaction API in use. **C**
+All transaction support is SQL-based; no C transaction API is used.
 
 - `begin_transaction(con|db)` → `execute("BEGIN TRANSACTION;")` (`transaction.jl:25-28`)
 - `commit(con|db)` → `execute("COMMIT TRANSACTION;")` (`transaction.jl:37-38`)
 - `rollback(con|db)` → `execute("ROLLBACK TRANSACTION;")` (`transaction.jl:47-48`)
 - `DBInterface.transaction(f, con|db)` (`transaction.jl:2-16`): runs `f()`, rolls back
-  and rethrows on exception, commits on success. **The commit call sits outside the
-  `try`** (`transaction.jl:4-11`) — a failing `COMMIT` gets no rollback attempt.
+  and rethrows on exception, commits on success. **The commit sits outside the `try`**
+  — a failing `COMMIT` gets no rollback attempt.
 
-**Transactions are per-connection** (`database.jl:36-42`). **C**
+Transactions are per-connection (`database.jl:36-42`); see
+[§3.1](#31-opening-a-database-db-vs-connection) for the measured isolation. The docs
+agree: "Within a Julia process, tasks are able to concurrently read and write to the
+database, as long as each task maintains its own connection to the database."
+(<https://duckdb.org/docs/lts/clients/julia.html>)
 
-`DB` wraps a database handle plus a `main_connection` (`database.jl:76-98`); passing a
-`DB` to any API uses `main_connection` (e.g. `result.jl:755-756`). One connection
-serves one query at a time; concurrent tasks need their own `DBInterface.connect(db)`
-(`database.jl:113`). The docs agree: "Within a Julia process, tasks are able to
-concurrently read and write to the database, as long as each task maintains its own
-connection to the database." **D**
-
-**Cross-connection isolation is measured**: a second `Connection` reading during an
-open transaction sees 0 rows, then 5 after commit — no dirty reads. **M**
-
-**Bulk-replace pattern**, measured atomic when done correctly (§5.1.3):
-`BEGIN; DELETE FROM t; <append + flush>; COMMIT`, with the appender's whole lifetime
-inside the transaction body under `try`/`finally`.
+**Bulk-replace**, measured atomic when done correctly: `BEGIN; DELETE FROM t;
+<append + flush>; COMMIT`, with the appender's whole lifetime inside the transaction
+body under `try`/`finally` (§5.1.3).
 
 ---
 
@@ -786,17 +1170,15 @@ inside the transaction body under `try`/`finally`.
 
 ### 7.1 Methodology
 
-- **Harness**: `bench_common.jl` (profiles, data generation, write paths, content
-  gate), `bench_write.jl`, `bench_read.jl`, `run_all.jl` (entry point, `run <tag>` /
-  `merge` modes), `run_sweep.sh` (drives the full sweep).
-- **Tool**: BenchmarkTools.jl 1.8.0 at full default sampling. Self-limiting — the
-  default 5-second budget caps the sample count per cell, so large cells get few
-  samples (as low as 1) and small cells get thousands. Sample counts are reported per
-  cell in `results.md`.
-- **Metric**: **median** time. The deliverable is the per-cell *path ordering*, not
-  absolute throughput (a `goal.md` constraint).
+- **Harness**: `bench_common.jl` (profiles, data generation, write paths, content gate),
+  `bench_write.jl`, `bench_read.jl`, `run_all.jl`, `run_sweep.sh`.
+- **Tool**: BenchmarkTools.jl 1.8.0, full default sampling. Self-limiting — the 5-second
+  budget caps sample count, so large cells get as few as 1 sample and small cells
+  thousands. Per-cell counts are in `results.md`.
+- **Metric**: median time. The deliverable is per-cell path *ordering*, not absolute
+  throughput.
 - **Scales**: 10,000 / 100,000 / 1,000,000 rows.
-- **Profiles** (the real table DDL):
+- **Profiles**:
 
   | Profile | DDL |
   |---|---|
@@ -806,64 +1188,58 @@ inside the transaction body under `try`/`finally`.
   | `list` | `id INTEGER, xs INTEGER[]` (1–4 non-empty elements per row) |
 
   List data is deliberately non-empty and `missing`-free, because empty vectors append
-  as NULL and lists with `missing` cannot be written at all (§5.1.5) — data that
-  exercises the path has to avoid both.
+  as NULL and lists with `missing` cannot be written at all (§5.1.5).
 
-- **Thread configurations**: 1 and 64 (`Threads.nthreads()`). DuckDB takes its thread
-  count from Julia's (`database.jl:81-82`), so this controls DuckDB's parallelism too;
-  a 1-thread-only run would have measured the registered-scan path with its
-  parallelism switched off.
-- **Repeats**: 2 per configuration. The `-t 1` repeats run concurrently (1 thread
-  each, 64 cores available); the `-t auto` repeats run serially, because each claims
-  every core and contention could flip the very orderings the sweep exists to check.
-- **Content gate**: every cell is **value-verified** before it is timed — not merely
-  row-counted, because §5.1.2 proved row counts insufficient. The gate paid for itself
-  immediately by catching §5.2.1.
-- **Coverage**: 84 cells per run × 4 runs. 60 measured, 24 skipped, **0 failed**.
-  Every skip carries the driver `file:line` or measured reason that justifies it.
-- **Data generation** is cached per (profile, scale) and never falls inside a timed
-  region.
+- **Paths measured**: `appender`, `register`, `register_flat`, `literal`
+  (`bench_common.jl:140`). Prepared bind and per-row INSERT were **not** measured, and
+  `literal` is batched at 1000 rows per statement (`bench_common.jl:225`).
+- **Thread configurations**: 1 and 64. DuckDB takes its thread count from Julia's
+  (`database.jl:81-82`), so this controls DuckDB's parallelism too.
+- **Repeats**: 2 per configuration. The `-t 1` repeats run concurrently; the `-t auto`
+  repeats run serially, because each claims every core and contention could flip the
+  orderings the sweep exists to check.
+- **Content gate**: every cell is value-verified before timing — not merely row-counted,
+  because §5.1.2 proved row counts insufficient. It caught §5.2.1 immediately.
+- **Coverage**: 84 cells per run × 4 runs; 60 measured, 24 skipped, **0 failed**. Skips
+  carry a driver `file:line` or measured reason, except the 9 `register_flat` cells per
+  run skipped as "not applicable — profile has no struct column", which is a harness
+  design choice.
 
-Raw records: `raw/results-{t1,tauto}-{a,b}.json`, merged into `results.json` and
-`results.md`. Console transcripts (`sweep*.log`) are gitignored as regenerable.
+### 7.2 Write results — 1 thread
 
-### 7.2 Write results — 1 thread (the recommended configuration)
-
-Median time · rows/s · allocations. Full tables in `results.md`.
+Median · rows/s · allocations. Full tables in `results.md`.
 
 | Profile | Scale | appender | register | register_flat | literal |
 |---|---|---|---|---|---|
-| flat | 10k | 2.051 ms · 4.9M/s · 76,936 | **1.015 ms · 9.9M/s · 329** | n/a | 155.914 ms · 64k/s · 159,285 |
-| flat | 100k | 19.377 ms · 5.2M/s · 796,936 | **6.116 ms · 16.4M/s · 1,649** | n/a | 1.718 s · 58k/s · 1.62M |
-| flat | 1M | 195.964 ms · 5.1M/s · 7,996,936 | **58.115 ms · 17.2M/s · 14,853** | n/a | 17.667 s · 57k/s · 16.2M |
+| flat | 10k | 2.051 ms · 4.9M/s · 76,936 | **1.015 ms · 9.9M/s · 329** | n/a | 155.914 ms · 64k/s |
+| flat | 100k | 19.377 ms · 5.2M/s · 796,936 | **6.116 ms · 16.4M/s · 1,649** | n/a | 1.718 s · 58k/s |
+| flat | 1M | 195.964 ms · 5.1M/s · 7,996,936 | **58.115 ms · 17.2M/s · 14,853** | n/a | 17.667 s · 57k/s |
 | rich | 10k | **12.313 ms · 812k/s** | ❌ UUID | n/a | 148.721 ms · 67k/s |
 | rich | 100k | **122.023 ms · 820k/s** | ❌ UUID | n/a | 1.677 s · 60k/s |
 | rich | 1M | **1.614 s · 619k/s · 19.9M** | ❌ UUID | n/a | 18.234 s · 55k/s |
 | struct | 10k | ❌ NamedTuple | ❌ NamedTuple | **730.721 µs · 13.7M/s · 234** | 94.988 ms · 105k/s |
 | struct | 100k | ❌ | ❌ | **3.022 ms · 33.1M/s · 1,114** | 1.042 s · 96k/s |
 | struct | 1M | ❌ | ❌ | **29.839 ms · 33.5M/s · 9,918** | 12.929 s · 77k/s · 1.705 GiB |
-| list | 10k | ❌ segfault | ❌ Vector | n/a | **91.776 ms · 109k/s** |
-| list | 100k | ❌ segfault | ❌ Vector | n/a | **1.033 s · 97k/s** |
-| list | 1M | ❌ segfault | ❌ Vector | n/a | **11.483 s · 87k/s** |
+| list | 10k | excluded (§5.1.4) | ❌ Vector | n/a | **91.776 ms · 109k/s** |
+| list | 100k | excluded (§5.1.4) | ❌ Vector | n/a | **1.033 s · 97k/s** |
+| list | 1M | excluded (§5.1.4) | ❌ Vector | n/a | **11.483 s · 87k/s** |
 
-**The headline, at flat/1M:** `register` is **3.4× faster** than the appender
-(58.115 ms vs 195.964 ms), allocates **538× less** (14,853 vs 7,996,936), and uses
-**328× less memory** (380.672 KiB vs 122.024 MiB).
+The `list`/`appender` cells were excluded by harness policy because the path segfaults
+around 1M appends; they were not measured to crash at 10k.
 
-The allocation figure is the mechanically interesting one: the appender's count is
-almost exactly **8 per row** on this 5-column profile (~1.6 per cell), which is what
-"one `ccall` per cell, not vectorized on the Julia side" (§4.2) costs. On the `rich`
-profile it rises to ~20 per row over 4 columns, because UUID and FixedDecimal are
-stringified before appending (`appender.jl:93, 95`).
+**At flat/1M:** `register` is **3.4×** faster than the appender (58.115 vs 195.964 ms),
+allocates **538×** less (14,853 vs 7,996,936) and uses **328×** less memory
+(380.672 KiB vs 122.024 MiB).
 
-`literal` is 2–3 orders of magnitude behind everywhere — 304× slower than `register`
-at flat/1M — and allocates up to **1.705 GiB** (struct/1M).
+The allocation figure is the mechanical story: the appender's count is almost exactly
+**8 per row** on this 5-column profile (~1.6 per cell), which is what "one `ccall` per
+cell, not vectorized on the Julia side" costs. On `rich` it rises to ~20 per row over 4
+columns, because UUID and FixedDecimal are stringified before appending.
 
-### 7.3 Read results
+`literal` is 2–3 orders of magnitude behind everywhere — 304× slower than `register` at
+flat/1M — and allocates up to 1.705 GiB.
 
-`materialized` (full `DataFrame`) vs `streaming` (`StreamResult` +
-`Tables.partitions`, consuming every chunk) vs `stream_first` (time to the **first**
-chunk only). 1 thread:
+### 7.3 Read results — 1 thread
 
 | Profile | Scale | materialized | streaming | stream_first |
 |---|---|---|---|---|
@@ -874,167 +1250,196 @@ chunk only). 1 thread:
 | struct | 1M | 854.118 ms | 865.208 ms | 1.837 ms |
 | list | 1M | 55.265 ms | 61.697 ms | 537.499 µs |
 
-**Materialized vs streaming is a wash for throughput.** Each wins some cells; the
-differences are small and two of the orderings did not even reproduce between repeat
-runs (§7.5). Do not choose between them on throughput.
+**Time-to-first-chunk is the result.** It is essentially flat in table size — 246 µs at
+10k rows, 420 µs at 1M on `flat`: a 100× data increase for a 1.7× latency increase.
+That is the entire case for streaming, subject to the `ORDER BY` caveat in
+[§3.4](#34-streaming-reads).
 
-**`stream_first` is the actual result.** Time-to-first-chunk is essentially **flat in
-table size** — 246 µs at 10k rows, 420 µs at 1M rows on the `flat` profile, a 100×
-data increase for a 1.7× latency increase. That is the entire case for streaming: a
-caller that can start work on chunk 1 gets its first rows in sub-millisecond time
-regardless of how big the table is.
+**Materialized vs streaming is a wash for throughput.** Each wins some cells, the gaps
+are small, and one of the two non-reproducing orderings sits here. Do not choose between
+them on throughput.
 
-**Measurement limitation, stated plainly:** BenchmarkTools reports *total* allocation,
-not peak working set, and the streaming benchmark consumes every chunk. So the
-allocation columns for `materialized` and `streaming` are near-identical (flat/1M:
-58.541 MiB vs 59.143 MiB) and say **nothing** about streaming's peak-memory advantage.
-That advantage is real by construction (one 2048-row chunk at a time vs one array per
-column) but is **not measured here**.
+**Measurement limitation:** BenchmarkTools reports *total* allocation, not peak working
+set, and the streaming benchmark consumes every chunk. So the allocation columns are
+near-identical (flat/1M: 58.541 vs 59.143 MiB) and say **nothing** about streaming's
+peak-memory advantage. That advantage is real by construction but **not measured here**.
 
-### 7.4 Thread count: more threads never helped
+### 7.4 Thread count
 
-Raising `Threads.nthreads()` from 1 to 64 did not improve a single measured cell, and
-badly hurt the fastest ones:
+Raising `Threads.nthreads()` from 1 to 64 helped nothing materially and hurt the fastest
+paths badly:
 
 | Cell | 1 thread | 64 threads | Change |
 |---|---|---|---|
-| flat 1M · register | 58.115 ms | 111.231 ms | **1.9× slower** |
 | flat 10k · register | 1.015 ms | 7.535 ms | **7.4× slower** |
 | struct 10k · register_flat | 730.721 µs | 5.709 ms | **7.8× slower** |
+| flat 1M · register | 58.115 ms | 111.231 ms | 1.9× slower |
 | struct 1M · register_flat | 29.839 ms | 58.752 ms | 2.0× slower |
-| flat 1M · literal | 17.667 s | 20.360 s | 1.15× slower |
 | flat 10k · read materialized | 412.382 µs | 991.340 µs | 2.4× slower |
+| flat 1M · literal | 17.667 s | 20.360 s | 1.15× slower |
 | flat 1M · appender | 195.964 ms | 203.457 ms | ~unchanged |
-| rich 1M · appender | 1.614 s | 1.500 s | ~unchanged (7% faster) |
+| rich 1M · appender | 1.614 s | 1.500 s | 7% *faster* |
 
-The pattern: **the appender is indifferent to thread count** (it is a scalar loop
-issuing C calls), while the *registered-scan* path — the one that is supposed to
-benefit — degrades sharply, worst at small scales.
+Three cells did improve — `rich` appender writes and `rich`/1M reads — all by ≤7%, which
+is within run-to-run spread. No path improved meaningfully.
 
-**I (inferred, not measured):** the registered scan hands out work in
-`ROW_GROUP_SIZE` = 204,800-row blocks (`table_scan.jl:140-145`), so even 1M rows is
-only ~5 blocks — 64 threads have nothing to divide, and pay coordination cost instead.
-`result.jl:686-708` additionally spawns one Julia task per thread per query. This
-explanation is consistent with the numbers but was not tested; the *measurement* is
-what should drive decisions.
+The pattern: **the appender is indifferent to thread count** (a scalar loop issuing C
+calls), while the registered scan — the path that should benefit — degrades sharply,
+worst at small scales.
 
-**Practical guidance**: run single-threaded unless a specific workload is measured to
-benefit. Note this is a property of the *process*, not a per-query setting — DuckDB
-takes its thread count from Julia's at DB construction (`database.jl:81-82`), so it is
-fixed by how Julia was launched.
+`Inferred:` the registered scan hands work out in `ROW_GROUP_SIZE` = 204,800-row blocks
+(`table_scan.jl:152-176`), so even 1M rows is only ~5 blocks — 64 threads have nothing
+to divide and pay coordination cost instead; `result.jl:686-708` additionally spawns one
+Julia task per thread per query. Consistent with the numbers, but not tested.
+
+**Guidance**: run single-threaded unless a specific workload is measured to benefit. This
+is a property of the *process*, fixed at DB construction from how Julia was launched.
 
 ### 7.5 Ordering stability
 
-The promise of this sweep is that per-cell path *orderings* reproduce between runs.
+- **Writes: all 24 orderings reproduced.** Every write recommendation is stable.
+- **Reads: 22 of 24 reproduced.**
 
-- **Writes: all 24 orderings reproduced.** Every write recommendation below is stable.
-- **Reads: 34 of 36 reproduced.** Two did not, both materialized-vs-streaming
-  near-ties (1 thread · read · struct · 1M; 64 threads · read · flat · 10k). Both are
-  flagged in `results.md` as too close to call — which is consistent with §7.3's
-  conclusion that the two read modes are not meaningfully separable on throughput.
+The two that did not:
 
-**One write ordering differs between thread configurations** (it is stable within
-each, so this is a real effect, not noise):
+| Cell | What flipped |
+|---|---|
+| 1 thread · read · struct · 1M | `materialized` vs `streaming` — a near-tie (854.118 vs 865.208 ms) |
+| 64 threads · read · flat · 10k | `streaming` vs `stream_first`; `materialized` was last in both runs |
+
+Note the second is a **latency** instability, in the metric §7.3 calls the actual result
+— not a materialized-vs-streaming tie.
+
+**One write ordering differs between thread configurations** (stable within each, so a
+real effect):
 
 | Cell | 1 thread | 64 threads |
 |---|---|---|
 | write · flat · 10k | `register` < `appender` < `literal` | `appender` < `register` < `literal` |
 
-So the appender/register crossover depends on the thread configuration:
-**at 1 thread `register` wins at every scale measured, including 10k**; at 64 threads
-the appender wins at 10k and `register` takes over from 100k up.
+So the crossover is config-dependent: **at 1 thread `register` wins at every scale
+measured, including 10k**; at 64 threads the appender wins at 10k and `register` takes
+over from 100k up.
 
-### 7.6 Tier-ordering conclusions
+### 7.6 Tier conclusions
 
-Measured, at 1 thread, per profile:
-
-| Table shape | Fastest working path | Runner-up |
-|---|---|---|
-| flat primitives (all columns `create_logical_type`-supported) | **`register` + `INSERT … SELECT`** | appender (3.4× slower at 1M) |
-| contains UUID (or BLOB) | **appender** — `register` cannot carry it | literal (11× slower at 1M) |
-| contains STRUCT with registerable leaves | **`register_flat`** (leaves flat, struct rebuilt in SQL) | literal (433× slower at 1M) |
-| contains LIST, MAP, nested, or blob-with-awkward-bytes | **literal** — it is the only option | — |
+The measured ordering feeds directly into
+[§8.1](#81-writer-tier-selection), which is the single place tier selection is stated.
 
 ---
 
-## 8. Consequences for dbdict Julia codegen
+## 8. Codegen rules
 
-### 8.1 Writer tier selection — REVISED, and it contradicts a recorded decision
+This section is self-contained: everything needed to emit correct Julia is here or
+quoted here.
 
-⚠️ **Flagged for the held codegen session
-`20260723-1109-julia-read-write-codegen` to reconcile on resume. Not decided here.**
+### 8.1 Writer tier selection
 
-The recorded position (`review-decisions.md` finding 4, and the study's implication 4)
-is *"appender tier = scalar-only tables"* with the appender as the preferred default,
-justified by the docs' "much faster" claim. **The measurements do not support making
-the appender the default.** For a table whose columns are all
-`create_logical_type`-supported, `register` + `INSERT … SELECT` is faster at every
-scale at 1 thread, by 3.4× at 1M rows, with 538× fewer allocations — and it is not
-less safe: unsupported types are rejected loudly at `register_table` (§4.4), whereas
-appender failures are silent and misalign data (§5.1.2).
+Take the first tier whose precondition holds.
 
-Proposed tier order for the codegen session to consider:
+| Tier | Emit | Precondition | Never here |
+|---|---|---|---|
+| 1 | `register` + `INSERT INTO … SELECT` | every column's Julia type is in `create_logical_type` coverage (§4.2) — includes VARCHAR-into-ENUM | — |
+| 2 | `register_flat` | as tier 1, plus STRUCT columns whose leaves are all tier-1 types | — |
+| 3 | **prepared bind** | the table has a BLOB column, or a LIST column at bulk scale | appender (§5.1.1, §5.1.4) |
+| 4 | appender | the table needs UUID and has no BLOB/LIST/STRUCT/MAP | — |
+| 5 | literal SQL | anything else — MAP, nested LIST, struct-containing-LIST, lists with `missing` | — |
 
-1. **`register` + `INSERT INTO … SELECT`** when every column type is in
-   `create_logical_type` coverage (§4.4): bool, all int/uint widths incl. 128-bit,
-   Float32/64, String, Date, Time, DateTime, FixedDecimal. Fastest **and** loudest on
-   failure.
-2. **`register_flat`** when the only obstacle is STRUCT columns whose leaves are all
-   tier-1 types — register leaves flat, reassemble in SQL.
-3. **appender** when the table needs UUID (which tier 1 cannot carry) and has no LIST,
-   STRUCT, MAP, or BLOB column. Mandatory conditions: appender lifetime inside the
-   transaction under `try`/`finally` (§5.1.3), per-step `duckdb_appender_error` polling
-   or pre-validation (§5.1.2), and a closing row-count check.
-4. **literal SQL** for everything else — LIST, MAP, nested, BLOB, structs containing
-   lists. Must use `%.17e` for floats (§5.2.1) and a `DuckType`-directed serializer
-   (§4.5).
+Tier 1 is both the fastest (3.4× the appender at flat/1M, 538× fewer allocations, §7.2)
+and the **loudest** — unsupported types are rejected at `register_table`, whereas
+appender failures are silent and misalign data.
 
-The prepared bind is not a tier; it is the **specific** path for BLOB columns (§4.3),
-where the appender is broken and tier 1 cannot carry the type.
+Tier 4 carries four mandatory guards, all in §8.2: lifetime inside the transaction,
+per-step error polling, no LIST column, no BLOB column.
 
-### 8.2 Hard constraints on generated code
+> Supersedes `review-decisions.md` finding 4 ("appender tier = scalar-only tables"),
+> which was justified by the docs' unmeasured "much faster" claim. The measurement is
+> not in doubt — all 24 write orderings reproduced (§7.5) — but the *decision* belongs
+> to the codegen session; this is the evidence it should reconcile against.
 
-Each one is a measured or code-cited failure, not a style preference:
+### 8.2 Never-emit and emit-instead
 
-- **Never emit an appender for a LIST column** — the process dies at ~1M appends
-  (§5.1.4), and no generated check can recover from a segfault.
-- **Never emit `duckdb_append_blob`** (i.e. `append(ap, ::Vector{UInt8})`) — it throws
-  before reaching C (§5.1.1). BLOB goes via prepared bind or literal.
-- **Never let an `Appender` outlive its transaction body** — buffered rows leak past a
-  rollback at GC time (§5.1.3).
-- **Never rely on a row count alone to validate an appender write** — a failed cell
-  misaligns subsequent columns while leaving a plausible count (§5.1.2).
-- **Never emit `string(x)` for a float in generated SQL** — 1 ULP silently lost
-  (§5.2.1). Use `@sprintf("%.17e", v)`.
-- **Never emit** `DuckDB.load!` / `appendDataFrame` (fixed `__append_df` temp name),
-  `DBInterface.lastrowid` (always throws), or per-row prepared `INSERT`s (slowest and
-  narrowest).
-- **Readers must accept both** `Vector{T}` and `Vector{Union{Missing,T}}` (§3.7), and
-  should alias every column with the dict spelling so Julia-side names are
-  deterministic (§5.2.2).
-- **Document the precision contracts in generated code**: `DateTime` ≡ ms, `Time` ≡ µs
-  (normalize explicitly on write), TIMESTAMPTZ/TIMETZ ≡ UTC (§3.6).
-- **Bulk-replace** = `DBInterface.transaction` + `DELETE` + write, appender flush
-  inside the transaction, dedicated `Connection` per writer task (§6).
-- **Run single-threaded** unless a workload is measured to benefit (§7.4).
+| # | Never emit | Emit instead | Failure if ignored |
+|---|---|---|---|
+| 1 | appender for a LIST column | prepared bind (4M verified) or literal | SIGSEGV at ~1M appends — unrecoverable (§5.1.4) |
+| 2 | `append(ap, ::Vector{UInt8})` | `duckdb_bind_blob` via prepared stmt (§4.4) | throws before reaching C (§5.1.1) |
+| 3 | an `Appender` outliving the txn body | the `try`/`finally` block below | rows appear after ROLLBACK, at GC time (§5.1.3) |
+| 4 | a row count as the only appender check | the polling wrapper below, per step | columns misalign; the count still looks plausible (§5.1.2) |
+| 5 | `string(x)` for a float | `@sprintf("%.17e", v)` | 1 ULP lost, silently (§5.2.1) |
+| 6 | an unaliased column reference | `SELECT c AS "dict_spelling"` | non-deterministic names; duplicates become `c_1` (§5.2.2, trap 5) |
+| 7 | a bare `SELECT` over an ARRAY column | `SELECT col::T[]`, or route around it via `information_schema` | throws at result construction, no handle (§3.6) |
+| 8 | `Tables.getcolumn`/`schema`/`columnnames` on a streamed chunk | `Tables.columns(chunk)` | two throw; `columnnames` returns `(:tbl,)` silently (§5.1.6) |
+| 9 | an empty `Vector` through the appender | prepared bind, or literal `[]` | writes NULL, not `[]` (§5.1.5) |
+| 10 | a wrong-case ENUM label | validate against the dict's labels first | silently lost, and misaligns later columns (§5.1.2) |
+| 11 | an over-precision `FixedDecimal` | round to the column's scale first | silently rounded (§4.5) |
+| 12 | a sub-µs `Time` through bind or register | normalize to µs first | `InexactError` at runtime (§3.7) |
+| 13 | multi-statement SQL via `DBInterface.execute` | `DuckDB.query` | runtime error (trap 6) |
+| 14 | `DuckDB.load!` / `appendDataFrame` | tier 1 | fixed `__append_df` temp name; unsafe concurrently (§4.7) |
+| 15 | `DBInterface.lastrowid` | — | always throws (§4.7) |
+| 16 | non-ASCII strings inside a bound/appended list | literal path | truncated by `length` vs `ncodeunits` (§5.1.5) |
 
-### 8.3 Type support, against the recorded lists
+**The two blocks rules 3 and 4 refer to**, reproduced in full so this section stands
+alone:
 
-`review-decisions.md` finding 4 records a supported list and an unsupported list. This
-document's measurements are consistent with it, with these notes:
+```julia
+# rule 3 — appender lifetime inside the transaction
+DBInterface.transaction(con) do
+  ap = DuckDB.Appender(con, "t")
+  try
+    # append rows here
+  finally
+    DuckDB.close(ap)   # flushes INSIDE the still-open transaction
+  end
+end
 
-- **ARRAY** is correctly on the unsupported list — it is unreadable in 1.5.2, and the
-  failure is at result construction, so it cannot be worked around client-side (§3.5).
-  A generated reader *can* cast `col::T[]` to LIST if that is ever wanted.
-- **LIST** is on the supported list, and the decision to write it via the literal tier
-  always is now **doubly** justified: not just the empty-vector→NULL and non-ASCII
-  truncation bugs, but the appender segfault (§5.1.4). Note the prepared bind is a
-  working alternative for LIST at scale (4M verified) if a faster-than-literal list
-  path is ever needed.
-- **BLOB** is on the supported list; note it has exactly one working bulk path
-  (prepared bind) plus literal — neither the appender nor `register` can carry it.
-- **STRUCT** is supported only through `register_flat` or literal, and
-  `register_flat` requires all leaves to be tier-1 types (§4.4).
+# rule 4 — poll after every step; the handle keeps only the LATEST error
+function appender_error(ap::DuckDB.Appender)
+  ap.handle == C_NULL && return nothing
+  p = DuckDB.duckdb_appender_error(ap.handle)   # returns Cstring
+  return p == C_NULL ? nothing : unsafe_string(p)
+end
+
+function checked_append(ap, v)
+  DuckDB.append(ap, v)
+  e = appender_error(ap); e === nothing || error("append($(repr(v))) failed: $e")
+end
+```
+
+### 8.3 Required imports
+
+Generated modules need these, and **only `DuckDB` brings `DBInterface` with it**:
+
+```julia
+using DuckDB              # exports DBInterface (DuckDB.jl:12)
+using Tables              # NOT re-exported — needed for columns/partitions/columntable
+using Dates               # Date, Time, DateTime columns
+using UUIDs               # UUID columns
+using Printf              # @sprintf("%.17e", …) in the literal tier
+using FixedPointDecimals  # DECIMAL columns
+using DataFrames          # only if the generated reader returns DataFrames
+```
+
+`using DuckDB, DBInterface` **fails** — `DBInterface` is a transitive dependency, not on
+the load path.
+
+### 8.4 Type support against the recorded lists
+
+`review-decisions.md` finding 4 records a supported and an unsupported list. The
+measurements here are consistent with it, with these notes:
+
+- **ARRAY** is correctly unsupported — unreadable in 1.5.2, and the failure is at result
+  construction so it cannot be worked around client-side (§3.6). A generated reader
+  *can* cast `col::T[]` to LIST, and `information_schema` distinguishes `INTEGER[3]`
+  from `INTEGER[]` for ahead-of-time detection.
+- **LIST** is supported, and writing it via the literal tier is doubly justified: the
+  empty-vector and non-ASCII bugs, plus the appender segfault. Note prepared bind is a
+  working alternative at scale if a faster-than-literal list path is ever needed.
+- **BLOB** is supported, with exactly one working non-literal path: prepared bind.
+- **STRUCT** is supported through `register_flat` or literal, and `register_flat`
+  requires all leaves to be tier-1 types.
+- **ENUM** is supported through tier 1 as well as the appender — a Julia `String` column
+  registers fine and DuckDB casts on insert (§4.1). This is *better* than the source
+  notes implied and keeps ENUM tables in the fastest tier.
 
 ---
 
@@ -1051,6 +1456,10 @@ julia --project=. verify_enum_appender.jl
 julia --project=. verify_appender_transaction.jl
 julia --project=. verify_structarray_register.jl
 
+# type-matrix scripts, originally from the capability spike
+julia --project=. read_path.jl
+julia --project=. literal_matrix.jl
+
 # the full sweep: 2 thread configs x 2 repeats, ~30 minutes
 ./run_sweep.sh
 ```
@@ -1060,47 +1469,59 @@ segfaults by design (§5.1.4). Run it deliberately, expecting a dead process.
 
 | File | What it is |
 |---|---|
-| `reference.md` | this document — the consolidated reference |
-| `findings.md` | phase 1 verification detail, plus §5–§6 discoveries |
+| `reference.md` | this document |
+| `findings.md` | phase-1/2 raw record; superseded by this document |
 | `results.md` | full benchmark tables + ordering-stability analysis |
-| `results.json`, `raw/results-*.json` | machine-readable records (the authoritative data) |
+| `results.json`, `raw/results-*.json` | machine-readable records (authoritative) |
 | `verify_*.jl` | one script per verified behaviour |
+| `read_path.jl`, `literal_matrix.jl` | read and literal type matrices (copied from the spike; both run under this environment) |
 | `bench_*.jl`, `run_all.jl`, `run_sweep.sh` | the benchmark harness |
 | `Project.toml`, `Manifest.toml` | the pinned environment |
 
 ---
 
-## Appendix A — corrections to the source notes
+## Appendix A: corrections to the source notes
 
-The two notes files remain as historical record. These are the points where this
-document overrides them.
+The notes remain as historical record. These are the points where this document
+overrides them.
 
-### Corrections to the driver study (`notes/20260725-1007`)
+### Driver study (`notes/20260725-1007`)
 
-| Study claim | Correction | Evidence |
-|---|---|---|
-| §3a — blob: `duckdb_append_blob` is wired at `appender.jl:94` | Wired but **unusable** — `Ref{Cvoid}` at `api.jl:7261` throws before the C call. Both the study ("wired") and the spike ("ERR") were right about their own observation | §5.1.1 **M** |
-| §3a / gotcha 12 — appender VARCHAR→ENUM cast, marked *Inferred* | **Measured true.** But the important half is new: invalid and wrong-case labels are silently lost, and a failed cell **misaligns later columns** | §5.1.2 **M** |
-| §5 — "appender flush participates in the connection's active transaction", marked *Inferred* | **Measured true for flushed rows.** New: *buffered* rows escape the transaction and can leak after a rollback at GC time | §5.1.3 **M** |
-| §3c — registered-table type failure "occurs at query bind time, not at registration" | **Wrong.** The throw comes out of `register_table` itself, because it creates a view and DuckDB binds the table function at view creation. The study's description of the *mechanism* is right; of *when you observe it*, wrong | §4.4 **M** |
-| Implication 4 — "prefer the **Appender** per table (docs-verified fastest)" | **Contradicted by measurement.** `register` + `INSERT … SELECT` is 3.4× faster at flat/1M with 538× fewer allocations, and wins at every scale at 1 thread | §7.2, §8.1 **M** |
-| §4 — registered scan is "multi-threaded", implying threads help | Measured: raising Julia's thread count **hurt** this path worst of all (flat 1M: 58.1 → 111.2 ms) | §7.4 **M** |
-| Header — "`DuckDB_jll` 1.5.2 — Project.toml" | That is a compat *bound*, not the resolution. Resolved artifact is **1.5.4+0**; engine reports v1.5.4 | §2.1 **M** |
+| Study claim | Correction |
+|---|---|
+| §3a — blob: `duckdb_append_blob` is wired at `appender.jl:94` | Wired but **unusable** — `Ref{Cvoid}` at `api.jl:7261` throws before the C call. Both notes were right about their own observation (§5.1.1) |
+| §3a / gotcha 12 — appender VARCHAR→ENUM cast, *Inferred* | **Measured true.** The important half is new: invalid and wrong-case labels are silently lost, and a failed cell misaligns later columns (§5.1.2) |
+| §5 — appender flush participates in the transaction, *Inferred* | **Measured true for flushed rows.** New: buffered rows escape the transaction and can leak after a rollback at GC time (§5.1.3) |
+| §3c — registered-table failure "occurs at query bind time, not at registration" | **Wrong.** The throw comes out of `register_table` itself (§4.2) |
+| Implication 4 — "prefer the **Appender** per table (docs-verified fastest)" | **Contradicted.** `register` is 3.4× faster at flat/1M with 538× fewer allocations, and wins at every scale at 1 thread (§7.2, §8.1) |
+| §4 — registered scan is "multi-threaded", implying threads help | Raising Julia's thread count **hurt** this path worst (flat 1M: 58.1 → 111.2 ms) (§7.4) |
+| Gotcha 8 — "empty Julia vector appends/**binds** as NULL" | Half wrong: that is the appender's behaviour. Prepared bind writes a real empty list (§5.1.5) |
+| Gotcha 10 — registered tables support "only flat primitive/decimal columns" | True of Julia eltypes, but a `String` column inserts into an **ENUM** column via cast, so ENUM tables stay in tier 1 (§4.1) |
+| Header — "`DuckDB_jll` 1.5.2 — Project.toml" | A compat *bound*, not the resolution. Resolved artifact is **1.5.4+0**; engine v1.5.4 (§2) |
 
-### Corrections to the capability spike (`notes/20260723-1530`)
+### Capability spike (`notes/20260723-1530`)
 
-| Spike claim | Correction | Evidence |
-|---|---|---|
-| §2 matrix — appender × list = `ok` | True at interactive scale, **fatal at bulk scale**: SIGSEGV at ~1.0–1.2M appends | §5.1.4 **M** |
-| §2 matrix — appender × blob = `ERR` | Correct, and now explained: the defect is `Ref{Cvoid}` at `api.jl:7261`, not a missing capability | §5.1.1 **M** |
-| §2 tier recommendation — "1. appender … 2. register-flattened … 3. literal" | Reordered by measurement: register first where types allow, `register_flat` second, appender third (for UUID), literal last | §7.6, §8.1 **M** |
-| §3 — "structarrays … write side is moot: the writer serializes literals regardless" | Superseded: `StructArray` components are registered **alias-based** (`===`-measured, zero-copy at registration), which makes `register_flat` the fastest struct write path, not the literal path | §4.4, §7.2 **M** |
-| Header — "pins DuckDB_jll 1.5.2" | The spike's own `Manifest.toml` resolves **1.5.4+0** | §2.1 **M** |
-| §4 — storage-format compatibility "1.5.2 ↔ 1.5.4" | Both sides were running engine **1.5.4**; this was a same-version check, weaker evidence for cross-version compatibility than it reads | §2.1 **M** |
+| Spike claim | Correction |
+|---|---|
+| §2 matrix — appender × list = `ok` | True at interactive scale, **fatal at bulk scale**: SIGSEGV at ~1.0–1.2M appends (§5.1.4) |
+| §2 matrix — appender × blob = `ERR` | Correct, and now explained: `Ref{Cvoid}` at `api.jl:7261`, not a missing capability (§5.1.1) |
+| §2 tier recommendation — appender first | Reordered by measurement: register → register_flat → bind → appender → literal (§8.1) |
+| §3 — "structarrays … write side is moot: the writer serializes literals regardless" | Superseded: `StructArray` components register alias-based (`===`-measured), making `register_flat` the fastest struct write path (§4.2, §7.2) |
+| Header — "pins DuckDB_jll 1.5.2" | The spike's own `Manifest.toml` resolves **1.5.4+0** (§2) |
+| §4 — storage-format compatibility "1.5.2 ↔ 1.5.4" | Both sides ran engine **1.5.4**; a same-version check, so cross-version compatibility is untested (§2) |
 
-### Correction to the held session (`20260723-1109/review-decisions.md`)
+### Held session (`20260723-1109/review-decisions.md`)
 
 | Recorded | Correction |
 |---|---|
-| Finding 14 (minor, PENDING) — "impl.md says DuckDB_jll 1.5.3, measured 1.5.2" | Neither. Resolved and measured: **DuckDB_jll 1.5.4+0**, engine `version()` = v1.5.4 (§2.1). Finding 14 can be closed with that value |
-| Finding 4 — "appender tier = scalar-only tables" (writer tier ordering) | ⚠️ Contradicted by benchmark; see §8.1. **To be reconciled on codegen resume, not here.** |
+| Finding 14 — "impl.md says DuckDB_jll 1.5.3, measured 1.5.2" | Resolved 2026-07-26 in that file: neither. **DuckDB_jll 1.5.4+0**, engine v1.5.4 (§2) |
+| Finding 4 — "appender tier = scalar-only tables" | Contradicted by benchmark; §8.1 has the measured order. To be reconciled on codegen resume |
+| Finding 4 — LIST via literal tier always | Still correct, now also justified by the appender segfault. Prepared bind is a working alternative at scale (§5.1.4) |
+| Finding 4 — appender-blob discrepancy "to settle in phase 5 harness" | **Already settled** (§5.1.1) — no phase-5 harness work needed, just a never-emit rule |
+
+### Corrections to `findings.md` (this directory)
+
+| Claim | Correction |
+|---|---|
+| §3b — "`appender.jl:59` registers a finalizer" | The finalizer is at **`appender.jl:56`**; line 59 is a `DB` constructor overload |
+| §1 — the `duckdb_appender_error` recipe's rationale | A hand-rolled `ccall` is **not** required. `DuckDB.duckdb_appender_error(ap.handle)` works; the `Ref`-box bug is in the driver's internal call site (`appender.jl:46`), not the wrapper's signature (§5.1.2) |

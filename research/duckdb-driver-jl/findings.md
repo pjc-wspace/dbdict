@@ -1,5 +1,16 @@
 # DuckDB.jl 1.5.2 — phase 1 verification findings
 
+> **Superseded by [`reference.md`](reference.md)**, which merges these findings with the
+> driver study, the capability spike and the benchmark sweep. Kept as the raw phase-1/2
+> record; where the two differ, `reference.md` wins. Two claims below were corrected
+> later — the finalizer line number (`appender.jl:56`, not `:59`) and the rationale for
+> the `duckdb_appender_error` recipe in §1 (a hand-rolled `ccall` is **not** required;
+> the driver's own wrapper works when handed `ap.handle`). See reference.md Appendix A.
+>
+> Cross-references below are to **this file's** sections unless prefixed — `spike §N`
+> means `.claude-work/notes/20260723-1530`, `study §N` means
+> `.claude-work/notes/20260725-1007`.
+
 Measured verdicts for the four behaviors that the driver study
 (`.claude-work/notes/20260725-1007`) left inferred or contradicted. Every claim
 below is produced by a script in this directory and cites the driver source line
@@ -17,8 +28,8 @@ it confirms or refutes.
 
 **Script:** `verify_blob_appender.jl`
 
-**Question.** The capability spike (`notes/20260723-1530` §2) measured
-appender × blob = `ERR`; the driver study (`notes/20260725-1007` §3a) found
+**Question.** The capability spike (spike §2) measured
+appender × blob = `ERR`; the driver study (study §3a) found
 `duckdb_append_blob` wired at `appender.jl:94`. Which is right?
 
 **VERDICT: both are. The path exists and is broken — a one-word type bug in the
@@ -90,7 +101,7 @@ a pointer, not the message. Reachable only on `duckdb_appender_create` failure.
 
 **Question.** Study §3a / gotcha 12 marked "appender writes ENUM by appending a
 string" as *Inferred*, extrapolated from the UUID stringify path
-(`appender.jl:93`). Measure it — and, given §1 showed the VARCHAR→BLOB cast
+(`appender.jl:93`). Measure it — and, given §1 above showed the VARCHAR→BLOB cast
 succeeds only for a narrow input slice, measure the sibling paths too.
 
 **VERDICT: confirmed — the C appender does cast VARCHAR→ENUM.** The inference
@@ -138,7 +149,7 @@ count could in principle re-align if the number of failures is a multiple of the
 column count. A generated appender-based writer must either
 
 1. poll `duckdb_appender_error` after each `append`/`end_row`/`flush` (recipe in
-   §1), or
+   §1 above), or
 2. validate values against the dictionary's types **before** they reach the
    appender,
 

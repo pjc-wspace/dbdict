@@ -228,6 +228,63 @@
     14,853 allocs → 3.372× and 538.4×, at `threads: 1`,
     `duckdb_jll: 1.5.4+0`)
 
+### phase 3b: adversarial review of reference.md, and full rewrite — DONE 2026-07-27
+
+> unplanned. user directive after phase 3: "send the docs to three tough adversarial
+> agents … check (1) accuracy (2) readability and clarity (3) excellent working
+> examples", then "everything, full rewrite pass".
+
+- [x] three parallel adversarial reviews (accuracy / readability / examples), each
+      with the pinned julia env so they could execute rather than opine
+- [x] **12 substantive errors found and re-verified by me before acting** — agent
+      output was not taken on trust. five were critical:
+  1. §7.6 routed BLOB → appender, contradicting this doc's own §4.6/§5.1.1/§8.2
+     never-emit rule. the tier table is what a generator author transcribes
+  2. "empty vector appends/**binds** as NULL" — false for bind: measured, bind
+     writes a real `[]` (`isnull=false, len=0`), appender writes NULL
+  3. §4.6 marked `register` ❌ for ENUM — measured OK via VARCHAR→ENUM cast, and
+     the spike had said so. wrongly demoted ENUM tables out of the fastest tier
+  4. "per-row prepared INSERTs: slowest path **measured**" — never benchmarked.
+     `WRITE_PATHS` has four paths, none per-row, and `literal` is batched at 1000
+  5. "no measured cell improved 1→64 threads" — contradicted by this doc's own
+     table three rows later (rich 1M appender, 7% faster)
+  - plus: read orderings "34 of 36" → **22 of 24**; the 2nd non-reproducing
+    ordering is streaming-vs-`stream_first`, not materialized-vs-streaming; the
+    PIVOT docs quote was truncated mid-sentence and presented as verbatim
+- [x] **three new driver findings absorbed**, all verified here:
+  - `QueryResultChunk` declares `Tables.columnaccess` true but `getcolumn`/`schema`
+    throw and `columnnames` returns `(:tbl,)` **with no error** — a silently wrong
+    answer on the streaming path. now §5.1.6 and the 5th upstream candidate
+  - `using DuckDB, DBInterface` fails — `DBInterface` is a transitive dep
+  - streaming's "flat in table size" holds only for pipeline-able queries;
+    `ORDER BY` makes first-chunk scale with table size (0.72 → 6.75 ms)
+- [x] full rewrite: 1106 → 1527 lines. TOC + quick-answers lookup; M/C/D/I markers
+      retired for parenthetical `(script.jl)` / `(file.jl:line)` citations with
+      `Inferred:` spelled out; §4 reordered to match tier order; §8 made
+      self-contained (16-row never-emit/emit-instead table with the two code blocks
+      inline, plus the required-imports block); §7.6 collapsed into §8.1 so tier
+      selection is stated in exactly ONE place — the duplication is what let the
+      BLOB contradiction exist
+- [x] **14 julia examples, every one executed**; doc output matches actual byte for
+      byte (verified by extract-and-run + sha256 of the blocks against what ran).
+      previously the doc had 2 julia blocks, neither runnable
+- [x] `read_path.jl` + `literal_matrix.jl` copied in from the spike and confirmed to
+      run under this Manifest — §0 promised every measured claim was reproducible
+      from this directory, and those two scripts (sole evidence for the read type
+      table and the literal matrix) were not here
+- [x] `findings.md` gains a supersession banner and disambiguated cross-references
+- [x] all 43 internal anchors validated under both anchor-generation conventions
+- **verify:** every julia block runs and its documented output matches; no evidence
+  markers left; anchors resolve; citations re-checked
+  - PASSED: 13/13 runnable blocks exit 0 (the 14th is a labelled pattern excerpt,
+    parse-checked); 0 leftover markers; 43/43 anchors resolve
+
+> **lesson recorded:** phase 3's own audit checked `file:line` citations — and those
+> held up, ~100 confirmed clean by the accuracy agent. what it never checked was
+> whether claims marked *measured* were actually measured, whether sections
+> contradicted each other, or whether derived counts were right. all five criticals
+> sat in that blind spot. auditing citations is not auditing claims.
+
 > **all phases complete.** next: `/ws close`.
 
 > stretch (not a phase): upstream issue filing if the close-time
