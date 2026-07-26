@@ -63,8 +63,10 @@ examples whose documented output matches actual byte for byte.
 - **State the measured tier ordering, but do not re-decide the writer tier here.**
   The benchmarks contradict the recorded appender-first decision; that
   reconciliation belongs to the codegen session and is flagged there.
-- **File all five upstream issues** (user decision), with reproducer scripts named
-  per bug. Filing itself is a separate follow-up.
+- **Upstream issues: documented, not filed.** Ranked with reproducers in
+  reference.md §5.4. Decided 2026-07-26 to file all five, then reversed
+  2026-07-27 (user): not filing for now. Every defect has a documented workaround,
+  so nothing downstream waits on an upstream fix.
 - **Single-source the tier table.** The BLOB contradiction existed only because
   tier guidance lived in two places; §7.6 now defers to §8.1.
 
@@ -88,10 +90,10 @@ Re-runnable when a new DuckDB.jl releases — that is the trigger to refresh.
 
 ## known follow-ups (not done, deliberately)
 
-- File the five upstream DuckDB.jl issues.
-- `reference.md` does not yet note that §5.2.1's bare-decimal-literal parsing
-  also reaches **struct field literals** (`{'x': 1.0}` makes the field a DECIMAL,
-  not a DOUBLE) — observed at close time, unrecorded.
+- Filing the five upstream DuckDB.jl issues, if that decision is ever revisited.
+- ~~struct-literal DECIMAL parsing unrecorded~~ — **done 2026-07-27**: §5.2.1 and
+  §8.2 rule 5 now state that the `%.17e` rule is recursive, and that the reference
+  serializer already handles it.
 - The deep dedup between `reference.md` and `findings.md` was scoped out of the
   rewrite; ~24% of `findings.md` is verbatim-duplicated.
 

@@ -1087,6 +1087,25 @@ already special-cased and are unaffected. This is a DuckDB behaviour, not a Duck
 bug, so it is not an upstream candidate for the driver — but every generated SQL writer
 hits it.
 
+**The rule is recursive, not per-column.** The same DECIMAL parse happens to a float
+literal at *any* nesting depth, so a serializer that fixes floats at column level and
+falls back to `string(x)` inside composites corrupts data just as silently:
+
+```
+typeof({'x': 0.11914626526441173})       = STRUCT(x DECIMAL(18,17))
+typeof({'x': 1.19146265264411730e-01})   = STRUCT(x DOUBLE)
+```
+
+Inserting the naive struct literal into a `STRUCT(x DOUBLE)` column gives
+`ulp_delta = -1`; the exponent form is exact. List literals behave identically
+(`[0.119…]` loses a ULP, `[1.19…e-01]` does not).
+
+`bench_common.jl` already handles this because its serializer recurses —
+`sqllit(::AbstractVector)` and `sqllit(::NamedTuple)` (`bench_common.jl:51-53`) both
+call back into `sqllit`, so nested floats reach the `%.17e` method at line 32. That is
+why the struct/literal benchmark cells passed the content gate. **Reuse that serializer
+rather than writing a fresh one.**
+
 #### 5.2.2 Identifier case rules
 
 From <https://duckdb.org/docs/current/sql/dialect/keywords_and_identifiers.html>:
@@ -1126,8 +1145,11 @@ typedef-shadows-builtin needs no keyword list in dbdict, the engine enforces it.
 
 ### 5.4 Upstream-issue candidates
 
-**Decision 2026-07-26 (user): file all five.** Filing is a follow-up task, not part of
-this session — this records the intent and the material a report needs.
+**Decision 2026-07-27 (user): not filing for now.** This supersedes the 2026-07-26
+decision to file all five. Each defect stays documented below with a named reproducer,
+so filing remains available later at no re-investigation cost, and every one has a
+documented workaround in [§8.2](#82-never-emit-and-emit-instead) — nothing downstream
+depends on an upstream fix.
 
 | Rank | Issue | Why it ranks here | Reproducer |
 |---|---|---|---|
@@ -1365,7 +1387,7 @@ per-step error polling, no LIST column, no BLOB column.
 | 2 | `append(ap, ::Vector{UInt8})` | `duckdb_bind_blob` via prepared stmt (§4.4) | throws before reaching C (§5.1.1) |
 | 3 | an `Appender` outliving the txn body | the `try`/`finally` block below | rows appear after ROLLBACK, at GC time (§5.1.3) |
 | 4 | a row count as the only appender check | the polling wrapper below, per step | columns misalign; the count still looks plausible (§5.1.2) |
-| 5 | `string(x)` for a float | `@sprintf("%.17e", v)` | 1 ULP lost, silently (§5.2.1) |
+| 5 | `string(x)` for a float **anywhere in generated SQL**, including inside a struct or list literal | `@sprintf("%.17e", v)`, applied by the *recursive* serializer | 1 ULP lost, silently, at any nesting depth (§5.2.1) |
 | 6 | an unaliased column reference | `SELECT c AS "dict_spelling"` | non-deterministic names; duplicates become `c_1` (§5.2.2, trap 5) |
 | 7 | a bare `SELECT` over an ARRAY column | `SELECT col::T[]`, or route around it via `information_schema` | throws at result construction, no handle (§3.6) |
 | 8 | `Tables.getcolumn`/`schema`/`columnnames` on a streamed chunk | `Tables.columns(chunk)` | two throw; `columnnames` returns `(:tbl,)` silently (§5.1.6) |

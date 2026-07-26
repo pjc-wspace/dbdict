@@ -54,12 +54,12 @@ source notes implied `register` couldn't carry ENUM. Measured this session.
 
 ## Known follow-ups, not done
 
-1. File the five upstream DuckDB.jl issues (decision recorded: yes to all five;
-   reference.md §5.4 has ranks and reproducers). Filing is its own small task.
-2. reference.md does not note that §5.2.1's bare-decimal-literal parsing also
-   reaches **struct field literals** — `{'x': 1.0}` makes the field DECIMAL, not
-   DOUBLE. Observed at close time while answering a question about read types;
-   unrecorded in the doc.
+1. Upstream issues: **not being filed** (user, 2026-07-27, reversing the 2026-07-26
+   decision to file all five). Documented with reproducers in reference.md §5.4;
+   every defect has a workaround, so nothing waits on a fix.
+2. ~~struct-literal DECIMAL parsing~~ — **recorded 2026-07-27**. The `%.17e` rule is
+   recursive: `{'x': <bare>}` yields `STRUCT(x DECIMAL(18,17))` and loses 1 ULP.
+   reference.md §5.2.1 + §8.2 rule 5 now say so.
 3. Deep dedup between reference.md and findings.md was scoped out of the rewrite;
    ~24% of findings.md is verbatim-duplicated. Drift hazard if either is edited.
 
