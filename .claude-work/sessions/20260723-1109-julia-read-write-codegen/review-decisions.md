@@ -5,6 +5,22 @@ review of goal.md + impl.md by an independent adversarial agent,
 them one at a time with the user; plan edits applied in batch once all
 are decided.
 
+> **DRIVER GROUND TRUTH (added 2026-07-26, session
+> `20260725-1252-duckdb-jl-driver-study-and-benchmarks`).**
+> `research/duckdb-driver-jl/reference.md` is now the single source of
+> truth for DuckDB.jl 1.5.2 behaviour — read/write type tables per path,
+> precision and UTC contracts, confirmed defects, benchmark numbers, and
+> the constraints on generated code (its §8). it supersedes both notes
+> files this session's decisions were grounded in
+> (`notes/20260723-1530` spike, `notes/20260725-1007` study); its
+> Appendix A lists every claim of theirs that later measurement
+> corrected.
+>
+> **⚠️ two findings below are affected — see the inline flags on
+> finding 4 (writer tier ordering, contradicted by benchmark) and
+> finding 14 (DuckDB_jll version, now settled). resolve finding 4 on
+> resume, before phase 5 writer-tier work.**
+
 ## finding 1 (blocker) — type-structure gap — DECIDED 2026-07-23
 
 claim: generators receive raw type strings; nothing parses DuckDB type
@@ -110,6 +126,39 @@ driver-study consequences adopted for the plan batch edit:
 - spike/study discrepancy to settle in phase 5 harness: appender blob
   (spike measured ERR; code has duckdb_append_blob wired)
 
+> **⚠️ RECONCILIATION REQUIRED (flagged 2026-07-26, decide on resume —
+> deliberately NOT decided in the driver session).**
+>
+> the writer-tier consequence recorded above — "appender tier =
+> scalar-only tables", with the appender as the preferred default per the
+> study's implication 4 and the docs' "much faster" claim — is
+> **contradicted by measurement**. at 1 thread, `register_table` +
+> `INSERT … SELECT` beats the appender at *every* scale measured,
+> including 10k, and by **3.4×** at 1M flat rows (58.1 ms vs 196.0 ms)
+> with **538× fewer allocations** (14.9k vs 8.0M). it is also the safer
+> path: unsupported column types are rejected loudly at `register_table`,
+> whereas appender failures are silent AND misalign subsequent column
+> values (reference.md §5.1.2 — a row-count check does not detect this).
+>
+> reference.md §8.1 proposes a revised four-tier order (register →
+> register_flat → appender-for-UUID → literal) for this session to
+> accept, reject, or amend. §7 has the full numbers and the
+> ordering-stability evidence; all 24 write orderings reproduced across
+> repeat runs.
+>
+> two settled sub-points that feed the same decision:
+> - **LIST via literal-always still stands, and is now doubly justified**
+>   — beyond empty-vec→NULL and non-ASCII truncation, the appender
+>   **segfaults the process** at ~1M list appends (reference.md §5.1.4).
+>   prepared bind survived 4M and is available if a faster list path is
+>   ever wanted.
+> - **BLOB has exactly one working bulk path: prepared bind.** the
+>   appender-blob discrepancy queued above for the phase 5 harness is
+>   **already settled** — both notes were right: the path is wired
+>   (`appender.jl:94`) but throws before reaching C, due to `Ref{Cvoid}`
+>   at `api.jl:7261` (reference.md §5.1.1). no phase 5 harness work
+>   needed; just never emit it.
+
 ## finding 5 (major) — parameterized defaults can't live in a plain
 key→value data file — DECIDED 2026-07-24 (design refined with user)
 
@@ -185,7 +234,22 @@ PENDING
 validate` subcommand — PENDING
 
 ## finding 14 (minor) — impl.md says DuckDB_jll 1.5.3, measured 1.5.2 —
-PENDING
+RESOLVED 2026-07-26 (value was wrong on both sides)
+
+neither 1.5.3 nor 1.5.2. the "1.5.2" reading came from DuckDB.jl's own
+`[compat] DuckDB_jll = "1.5.2"`, which is a compat *bound*, not a pin —
+julia's Pkg docs: "a version specifier given as e.g. `1.2.3` is
+therefore assumed to be compatible with the versions `[1.2.3 - 2.0.0)`"
+(https://pkgdocs.julialang.org/v1/compatibility/).
+
+the resolved artifact, in both this session's spike Manifest.toml and
+the driver session's, is **DuckDB_jll 1.5.4+0**, and the running engine
+reports `version()` = v1.5.4 (measured). fix impl.md to 1.5.4+0.
+
+consequence worth noting: the julia side and dbdict's bundled rust side
+run the *same* engine version, so the spike's §4 storage-format
+"1.5.2 ↔ 1.5.4" compatibility check was actually a same-version check —
+weaker cross-version evidence than it reads. see reference.md §2.1.
 
 ## finding 15 (minor) — goal.md pk phrasing table-level vs column-level
 model; pk-on-struct-column edge — PENDING

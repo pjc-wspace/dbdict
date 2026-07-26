@@ -1,5 +1,12 @@
 # duckdb.jl capability spike — findings
 
+> **HISTORICAL RECORD — superseded 2026-07-26.** the current consolidated
+> reference is `research/duckdb-driver-jl/reference.md`, which merges this
+> spike, the driver study (`20260725-1007`), phase-1 verification, and
+> benchmark results. six claims in this note were corrected by later
+> measurement — see that document's Appendix A. read it, not this, for
+> current behaviour.
+
 phase 1 of session `20260723-1109-julia-read-write-codegen`. all results
 measured against DuckDB.jl **1.5.2** (latest release; pins DuckDB_jll 1.5.2)
 on julia 1.12.6, spike scripts in the session's `spike/` dir. the bundled

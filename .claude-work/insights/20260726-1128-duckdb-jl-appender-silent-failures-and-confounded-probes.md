@@ -40,7 +40,7 @@ source: /ws done
 
 Buffered appender rows escape the transaction entirely. There is no discard path —
 `api.jl:6820` documents `duckdb_appender_destroy` as flushing on destroy — and
-`appender.jl:59` registers a finalizer, so an appender abandoned on an error path
+`appender.jl:56` registers a finalizer, so an appender abandoned on an error path
 is flushed by the **GC**: measured 0 rows immediately after a rollback, then 5
 rows after a forced `GC.gc()`. Non-deterministic, post-rollback data appearance.
 Mitigation measured to hold: keep the appender's whole lifetime inside the

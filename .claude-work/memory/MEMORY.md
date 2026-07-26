@@ -6,3 +6,4 @@
 - [Regular code reviews](regular-code-reviews.md) — /code-review at every /ws done phase boundary; TDD alone isn't enough
 - [Git two identities](git-two-identities-machine-tracking.md) — author/committer split is deliberate machine tracking; never "fix" it
 - [No unprompted next-step nudges](no-unprompted-next-step-nudges.md) — answer what's asked and stop; user directs the pace
+- [Parallelize long independent work](parallelize-long-independent-work.md) — run independent long jobs concurrently; ask before serializing, state wall-clock up front

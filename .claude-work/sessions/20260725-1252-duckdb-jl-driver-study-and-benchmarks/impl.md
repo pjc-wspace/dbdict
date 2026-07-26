@@ -46,7 +46,7 @@
       rollback (flush-before-commit semantics)
   - also: buffered (unflushed) rows escape the transaction; measured 5
     rows appearing after a forced `GC.gc()` post-rollback via the
-    `appender.jl:59` finalizer. mitigation (appender lifetime inside the
+    `appender.jl:56` finalizer. mitigation (appender lifetime inside the
     txn body, `try`/`finally`) measured to hold
   - also: bulk-replace atomicity and cross-connection isolation confirmed
 - [x] `verify_structarray_register.jl` — StructArray through
@@ -140,16 +140,28 @@
 - **contradicts study §4**: `register` + `INSERT…SELECT` beats the
   appender by 3.4× at 1M flat rows (58.1 ms vs 196.0 ms) and allocates
   538× less (14.8k vs 8.0M) — the appender costs one Julia allocation per
-  cell. Crossover between 10k and 100k; below that the appender wins.
-- **threads are counterproductive**: `-t auto` (64) is ~2× *slower* than
-  1 thread at every scale measured.
+  cell.
+  > corrected during phase 3: this line originally read "crossover
+  > between 10k and 100k; below that the appender wins", which holds
+  > **only at 64 threads**. at 1 thread `register` wins at *every* scale
+  > measured, including 10k (1.015 ms vs 2.051 ms). write/flat/10k is the
+  > single ordering that differs between thread configs — stable within
+  > each, so a real effect, not noise. reference.md §7.5 states it
+  > per-config.
+- **threads are counterproductive**: `-t auto` (64) is *slower* at every
+  scale measured, and no cell improved.
+  > refined during phase 3: "~2×" is right for the paths that matter
+  > (register flat 1M 58.1 → 111.2 ms) but not uniform — the appender is
+  > essentially indifferent to thread count (flat 1M 196.0 → 203.5 ms;
+  > rich 1M actually 7% faster), while register/register_flat degrade
+  > worst, up to 7.8× at small scales. reference.md §7.4 has the table.
 - per-profile winners at 1M: flat → `register`; rich → `appender`
   (register cannot carry UUID); struct → `register_flat`; list →
   `literal` only.
 
-### phase 3: consolidated driver reference
+### phase 3: consolidated driver reference — DONE 2026-07-26T13:59:39+12:00
 
-- [ ] `research/duckdb-driver-jl/reference.md` — the single document,
+- [x] `research/duckdb-driver-jl/reference.md` — the single document,
       merging: the capability spike (+§2b addendum), the driver study,
       phase 1 verdicts, phase 2 numbers. structure: executive summary;
       read path (API, type table, precision contracts); write paths (API,
@@ -157,19 +169,66 @@
       transactions/connections; benchmark methodology + results +
       tier-ordering conclusions; versioning statement (DuckDB.jl 1.5.2,
       refresh triggers)
-- [ ] every behavior claim traces to a script in the dir or a driver
+  - delivered: 1106 lines, 9 sections + appendix A (corrections to the
+    source notes), structured exactly as planned
+- [x] every behavior claim traces to a script in the dir or a driver
       file:line — no unsourced claims survive the merge
-- [ ] the two notes files gain a one-line header pointing to reference.md
+  - also: adopted an explicit **evidence marker** per claim — M measured
+    (script named) / C code (file:line) / D docs (verbatim + URL) / I
+    inferred-and-flagged. the merge sources disagree in several places
+    *because* they are different evidence classes; flattening them into
+    one voice would have destroyed that distinction
+  - also: re-fetched all six docs quotes live rather than trusting the
+    study's transcription (CLAUDE.md sourcing rule — documentation
+    amplifies errors). all six matched
+  - **also: audited 27 load-bearing citations against the driver source
+    and found one wrong** — the appender finalizer is `appender.jl:56`,
+    not `:59` (line 59 is a `DB` constructor overload). the error
+    originated in phase 1's findings.md §3b and had already propagated to
+    impl.md, a saved insight file, and the new reference doc. corrected
+    in all four live docs; left in the phase-2 state dump, which is a
+    point-in-time snapshot. the other 26 were exact
+- [x] the two notes files gain a one-line header pointing to reference.md
       as the current consolidated version (notes stay as history)
-- [ ] held session's `review-decisions.md` gains the pointer to
+  - also: each header states the *count* of claims that later measurement
+    corrected (6 spike, 7 study) and points at appendix A, so a reader
+    landing on a note knows how much of it to distrust
+- [x] held session's `review-decisions.md` gains the pointer to
       reference.md as driver ground truth; if benchmark orderings
       contradict any recorded tier decision, add a flagged
       reconciliation note there (decide on codegen resume, not here)
-- [ ] close-time decision (recorded, not implemented): file upstream
+  - also: **finding 14 RESOLVED there** (it was PENDING) — the recorded
+    `DuckDB_jll 1.5.2` came from reading DuckDB.jl's `[compat]` *bound*
+    as a pin. resolved artifact is **1.5.4+0**, engine `version()` =
+    v1.5.4. consequence: the spike's "1.5.2 ↔ 1.5.4 storage compat" check
+    actually ran the same engine on both sides
+  - also: the flagged block retires a queued phase-5 harness task — the
+    appender-blob discrepancy is settled (wired at `appender.jl:94`, but
+    throws before reaching C via `Ref{Cvoid}` at `api.jl:7261`), so
+    phase 5 needs no harness work for it, just a never-emit rule
+- [x] close-time decision (recorded, not implemented): file upstream
       DuckDB.jl issues for silent appender errors, empty-vector→NULL,
       list non-ASCII truncation — yes/no per bug
+  - **decision (user, 2026-07-26): YES to all four** — the list-append
+    segfault and the blob `Ref{Cvoid}` bug joined the original three
+    candidates. recorded in reference.md §5.4 with the reproducer script
+    named per bug and a note to cite DuckDB_jll 1.5.4+0 when filing.
+    filing itself remains a separate follow-up, not this session
 - **verify:** reference.md complete per goal success criteria; spot-check
   three claims back to their script/source; commits clean
+  - PASSED: all goal criteria present (read + per-path write type tables,
+    precision/UTC contracts, gotcha list, benchmark methodology + numbers,
+    explicit versioning). three spot-checks, two of them by **executing**
+    rather than re-reading: `verify_structarray_register.jl` re-run
+    (registration-time throw + path-E reassembly reproduced exactly),
+    `verify_blob_appender.jl` re-run (raw `Ptr{Cvoid}` ccall succeeds,
+    String workaround silently loses the non-UTF-8 row, NUL throws), and
+    the headline numbers traced to `raw/results-t1-a.json`
+    (appender 195.964 ms / 7,996,936 allocs vs register 58.115 ms /
+    14,853 allocs → 3.372× and 538.4×, at `threads: 1`,
+    `duckdb_jll: 1.5.4+0`)
+
+> **all phases complete.** next: `/ws close`.
 
 > stretch (not a phase): upstream issue filing if the close-time
 > decision says yes — would be its own small follow-up

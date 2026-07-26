@@ -174,7 +174,7 @@ as *"Closes the appender by flushing all intermediate states to the table and
 destroying it."* Buffered rows cannot be thrown away — the only lever is *when*
 the flush happens relative to the transaction.
 
-Worse, `appender.jl:59` registers a finalizer. An appender abandoned on an error
+Worse, `appender.jl:56` registers a finalizer. An appender abandoned on an error
 path is closed by the **GC**, at an arbitrary later time:
 
 ```

@@ -1,5 +1,14 @@
 # DuckDB.jl 1.5.2 driver capability study (for dbdict Julia codegen)
 
+> **HISTORICAL RECORD — superseded 2026-07-26.** the current consolidated
+> reference is `research/duckdb-driver-jl/reference.md`, which merges this
+> study, the capability spike (`20260723-1530`), phase-1 verification, and
+> benchmark results. seven claims in this note were corrected by later
+> measurement — including three marked *Inferred* here (now measured), the
+> §3c bind-time claim (wrong), and implication 4's appender-first tier
+> recommendation (contradicted by benchmark). see that document's
+> Appendix A. read it, not this, for current behaviour.
+
 Ground truth: installed source at `/home/pjc/.julia/packages/DuckDB/2J7sd/src/` (package
 version 1.5.2, `DuckDB_jll` 1.5.2 — Project.toml). All `file:line` citations below refer
 to that directory. Docs page consulted: https://duckdb.org/docs/lts/clients/julia.html
