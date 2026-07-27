@@ -12,33 +12,59 @@
 
 ## phases
 
-### phase 1: claim inventory and duplication map
+### phase 1: claim inventory and duplication map — DONE 2026-07-27T12:14:15+12:00
 
 Build the mechanical baseline everything else is verified against. Nothing is
 deleted in this phase.
 
-- [ ] `tools/inventory.py` in the session dir — extract an atomic-claim list from
+- [x] `tools/inventory.py` in the session dir — extract an atomic-claim list from
       both files: every table row, every bullet, every bolded assertion, keyed by
       `file:line` and owning heading. Output `inventory-before.tsv`
-- [ ] build the **fact map**: for each distinct driver fact, its canonical home
-      and every current mention site. Seed from the known repeat offenders —
-      LIST-segfault (12 sites), `register_flat` (12), "1 ULP" (6), "3.4×" (6),
-      `Ref{Cvoid}`, column-misalignment, GC-leak, `columnnames` `(:tbl,)` — then
-      sweep for others rather than assuming that list is complete
-- [ ] classify every mention as one of: **canonical** (the one full explanation),
-      **action-restatement** (allowed in §1/§8 — one clause plus a pointer),
-      **cross-reference** (already just a pointer), or **redundant** (to cut)
-- [ ] classify `findings.md` content against `reference.md`: **duplicated**
-      (conclusion already stated there), **provenance** (probe question, confound,
-      rejected hypothesis — to keep), or **unique-substantive** (a fact that
-      exists *only* in findings.md — flag loudly; it must move to reference.md
-      before findings.md is reduced)
-- [ ] write `dedup-plan.md` in the session dir: the per-fact decision table the
-      next two phases execute
+  - **also: the extractor had to be widened mid-phase.** It first counted a
+    paragraph line only when it carried bold, to stop connective prose flooding
+    the output. That silently dropped **459 claims** (562 → 1021), including
+    findings.md §4d's path-E result and reference.md §4.3's list-field boundary,
+    both stated in plain prose. An inventory used to prove *nothing was lost* must
+    favour recall — precision loss is noise filtered by `kind`, recall loss is a
+    claim nothing protects. Final: **1021 claims** (findings 256, reference 765)
+  - also: heading coverage verified explicitly — 0 uncovered in findings.md; the
+    5 uncovered in reference.md confirmed to be section containers with zero body
+    lines, not extraction failures
+- [x] build the **fact map**: for each distinct driver fact, its canonical home
+      and every current mention site
+  - result in `dedup-plan.md` §D. Worst offender LIST-segfault: **15 mentions
+    across 12 sections**. Also mapped: blob `Ref{Cvoid}` (11/7), GC leak (11/7),
+    misalignment (10/7), threads (10/5), `%.17e` (9/6), empty-vec (7/5),
+    chunk `columnnames` (6/4), the 3.4×/538× ratios (6/4)
+- [x] classify every mention as canonical / action-restatement / cross-reference
+      / redundant
+- [x] classify `findings.md` content against `reference.md` as duplicated /
+      provenance / unique-substantive
+  - **also: two comparison methods tried; the first was wrong and is recorded so
+    it is not re-run.** `crossmatch.py` compared line-by-line and returned 113
+    "unique" lines, nearly all false — the two files state identical facts with
+    different sentence breaks, so a true duplicate scores unique because no single
+    line pairs up. It was measuring line wrapping. `tokencov.py` (distinctive
+    tokens: `file.jl:NNN`, backticked identifiers, C error strings, numbers)
+    survives rewrapping and gave the real answer: 256 tokens, **39 absent**. It
+    needed one fix — collapse whitespace both sides, or a token wrapped across a
+    line break in the target reads as absent
+  - **also: the unique-substantive list is NOT empty — 6 items**, and A1 is a
+    real loss the phase-3b rewrite already caused: reference.md §5.2.1 dropped
+    findings §6's six-row literal-form table, so it now asserts "adding digits
+    does not help" with no evidence and names the quoted-string fix without
+    showing it. Cutting findings.md first would have destroyed it permanently —
+    the plan's move-before-cut ordering earned its place on the first phase that
+    could test it
+- [x] write `dedup-plan.md` — the per-fact decision table phases 2-3 execute,
+      with §E as phase 4's verification contract
 - **verify:** `inventory-before.tsv` covers both files with no section unaccounted
   for; every fact in the map has exactly one nominated canonical home; the
   unique-substantive list is explicitly empty or explicitly enumerated. Spot-check
   10 random claims from the inventory back to their `file:line`
+  - PASSED: coverage complete (5 uncovered headings proven empty); every mapped
+    fact has one nominated home; unique-substantive enumerated as 6 items;
+    **10/10 spot-checks exact, 0 mismatched**
 
 ### phase 2: reduce findings.md to a provenance record
 

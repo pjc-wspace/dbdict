@@ -1,0 +1,48 @@
+# source research/duckdb-driver-jl/findings.md  target research/duckdb-driver-jl/reference.md
+
+## citation: 23 distinct in source, 2 absent from target
+  L221                    table_scan.jl:201-205
+  L231                    table_scan.jl:201
+
+## errstr: 9 distinct in source, 3 absent from target
+  L73                     Invalid unicode (byte sequence mismatch) detected in value construction
+  L75                     Call to EndRow before all columns have been appended to!
+  L131                    Failed to cast value: Unimplemented type for cast (INTEGER -> ENUM(
+
+## ident: 158 distinct in source, 27 absent from target
+  L10                     spike §N
+  L11                     study §N
+  L41                     DuckDB.append(ap, ::Vector{UInt8})
+  L75                     Call to EndRow before all columns have been appended to!
+  L85                     duckdb_appender_error(handle)
+  L106                    "happy"::String
+  L109                    FixedDecimal{Int64,4}
+  L111                    "Happy"
+  L112                    FixedDecimal{Int64,4}(12.3456)
+  L112                    DECIMAL(18,2)
+  L112                    12.35
+  L133                    ["sad","ok","banana","happy"]
+  L134                    ["sad","ok","happy"]
+  L157                    BEGIN; DELETE FROM t; <append>; COMMIT
+  L207                    StructArray(id::Int32, name::String, score::Float64)
+  L209                    loc::StructArray(x,y)
+  L209                    @NamedTuple{x,y}
+  L221                    table_scan.jl:201-205
+  L231                    table_scan.jl:201
+  L245                    (x = 1.0, y = 3.0)
+  L313                    midbatch
+  L327                    skip_reason
+  L348,350                FixedDecimal{Int64,17}
+  L349                    0.11914626526441173::DOUBLE
+  L353                    '0.11914626526441173'::DOUBLE
+  L355                    DECIMAL(_,17)
+  L360                    sqllit(::AbstractFloat)
+
+## number: 66 distinct in source, 7 absent from target
+  L19                     1.12.6,
+  L19                     1.5.4,
+  L52                     1.5.2.
+  L112                    12.3456
+  L112                    18,2
+  L112                    12.35
+  L221,231                201
