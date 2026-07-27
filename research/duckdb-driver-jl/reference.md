@@ -64,7 +64,9 @@ work with. Streaming reads exist in 2048-row chunks and work, with one trap
 
 **Writing is the weak side, and no single path covers the type matrix.** Five paths
 exist with different type ceilings — registered scan, registered-flat, prepared bind,
-appender, literal SQL. Only literal SQL covers everything.
+appender, literal SQL. Literal SQL comes closest — it covers every type dbdict uses
+**except** `ARRAY`, which is unwritable and unreadable in 1.5.2 ([§3.6](#36-types-that-throw-on-read)),
+and `INTERVAL`, which is read-only on every path (§4.1).
 
 **The docs' performance advice is wrong for bulk loads.** The docs say the Appender is
 "much faster than using prepared statements or individual INSERT INTO statements"
@@ -653,8 +655,9 @@ struct-of-struct via recursive flattening (`verify_structarray_register.jl`).
 | anything else | `println(val)` + `NotImplementedException` | `statement.jl:74-77` |
 
 **Gaps vs the appender**: no `Int128`, `UInt128`, `UUID`, `FixedDecimal`, interval.
-**But bind is the only working path for BLOB**, and it survives LIST at scale
-(4,000,000 values) where the appender dies.
+**But bind is the only working *bulk* path for BLOB** — literal SQL writes BLOB too
+(§4.1), just far slower — and bind survives LIST at scale (4,000,000 values) where the
+appender dies.
 
 ```julia
 using DuckDB, Tables
@@ -1410,16 +1413,27 @@ Take the first tier whose precondition holds.
 |---|---|---|---|
 | 1 | `register` + `INSERT INTO … SELECT` | every column's Julia type is in `create_logical_type` coverage (§4.2) — includes VARCHAR-into-ENUM | — |
 | 2 | `register_flat` | as tier 1, plus STRUCT columns whose leaves are all tier-1 types | — |
-| 3 | **prepared bind** | the table has a BLOB column, or a LIST column at bulk scale | appender (§5.1.1, §5.1.4) |
-| 4 | appender | the table needs UUID and has no BLOB/LIST/STRUCT/MAP | — |
-| 5 | literal SQL | anything else — MAP, nested LIST, struct-containing-LIST, lists with `missing` | — |
+| 3 | **prepared bind** | **every** column is ✅/⚠️ in §4.1's `prepared bind` column — notably **not** `DECIMAL`, `UUID`, 128-bit ints, STRUCT, MAP or nested LIST — **and** at least one is BLOB or a bulk-scale LIST | appender (§5.1.1, §5.1.4) |
+| 4 | appender | **every** column is ✅/⚠️ in §4.1's `appender` column — notably **not** BLOB, LIST, STRUCT or MAP — **and** the table needs UUID | — |
+| 5 | literal SQL | anything else — MAP, nested LIST, struct-containing-LIST, lists with `missing`, and any table no single tier above can cover | — |
+
+**Every precondition is a conjunction over *all* columns**, not a test on the column
+that motivated the tier. §4.1 is the authority. A table whose columns cannot all be
+served by one tier falls through to tier 5, even when one column looks like a perfect
+fit for an earlier tier — `BLOB + DECIMAL` and `BLOB + UUID` are the cases that catch
+this. BLOB points at tier 3, but bind writes neither DECIMAL nor UUID, and the appender
+cannot write BLOB, so both tables land at tier 5.
 
 Tier 1 is both the fastest (3.4× the appender at flat/1M; full figures §7.2) and the
 **loudest** — unsupported types are rejected at `register_table`, whereas appender
 failures are silent and misalign data (§5.1.2).
 
-Tier 4 carries four mandatory guards, all in §8.2: lifetime inside the transaction,
-per-step error polling, no LIST column, no BLOB column.
+Tier 4 carries six mandatory guards, all in §8.2. Four are structural — lifetime inside
+the transaction, per-step error polling, no LIST column, no BLOB column (rules 1-4) —
+and two are value-level: validate ENUM labels for case, and round an over-precision
+`FixedDecimal` to the column's scale, both *before* the value reaches the appender
+(rules 10, 11). The value-level pair matters because they are the failures a row count
+cannot see.
 
 > Supersedes `review-decisions.md` finding 4 ("appender tier = scalar-only tables"),
 > which was justified by the docs' unmeasured "much faster" claim. The measurement is

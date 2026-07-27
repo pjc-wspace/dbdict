@@ -186,6 +186,45 @@ deleted in this phase.
 - also: 1 julia block changed (§4.4's comment), 13 byte-for-byte unchanged — phase 4
   pass 1 must re-run at minimum that block
 
+### phase 3 addendum: fix the internal contradictions — DONE 2026-07-27T13:32:18+12:00
+
+Phase 3 recorded the §8.1 tier gap as an out-of-scope follow-up. **The user directed
+that it be fixed in-session**, so `goal.md`'s scope was narrowed accordingly (see its
+annotation) and the sweep was widened to look for the same defect class elsewhere
+rather than fixing only the reported instance. Four contradictions found, all fixed.
+
+- [x] **§8.1 tiers 3 and 4 restated as conjunctions**, symmetric with tiers 1-2 which
+      already read "**every** column's Julia type is in…". Both now test membership in
+      §4.1's column for that path
+  - **also: the first attempt reproduced the bug it was fixing.** It enumerated bind's
+    gaps inline as "no `Int128`/`UInt128`, `UUID`, `DECIMAL` or interval", copied from
+    §4.4's "Gaps vs the appender" — but bind also rejects STRUCT, MAP and nested LIST,
+    so that list was partial and would read as complete. The cells now point at §4.1
+    as authority and mark the named exclusions as *notable*, not exhaustive
+- [x] **guard sentence added** under the tier table — every precondition is a
+      conjunction over all columns, §4.1 is the authority, and a table no single tier
+      covers falls to tier 5; `BLOB + DECIMAL` and `BLOB + UUID` named as the cases
+      that catch it. Tier 5's "anything else" extended to make the fall-through explicit
+- [x] **§1 self-contradiction fixed** — "no single path covers the type matrix"
+      followed, in the same sentence, by "Only literal SQL covers everything". §4.1
+      shows literal is ❌ for `ARRAY` and read-only for `INTERVAL`; both now stated
+- [x] **§4.4's "bind is the only working path for BLOB" corrected** to "only working
+      *bulk* path" — §4.1 shows literal writes BLOB too. The unqualified form would
+      route a small-table BLOB write away from a path that works
+- [x] **§8.1's "four mandatory guards" for tier 4 corrected to six** — rules 1-4 are
+      structural, but §8.2 rules 10 (wrong-case ENUM) and 11 (over-precision
+      `FixedDecimal`) are also appender-specific, and are precisely the failures a row
+      count cannot see
+- **verify:** no claim contradicts §4.1; nothing lost; examples still intact
+  - PASSED. Loss check against the pre-fix commit: **0 absent across all four token
+    classes — citations, error strings, identifiers *and* numbers**. All **14 julia
+    blocks unchanged**. **46/46 anchors** resolve. 0 cross-file verbatim runs ≥120
+  - `.claude-work/notes/20260727-1306-…` updated to **RESOLVED** with the full record
+
+> The fix needed no new facts. §4.1 already held every one; the summaries had lost a
+> quantifier ("every column" → "the table has a…"), a qualifier ("only working path" →
+> "only working *bulk* path"), or a count. That is what made it safely in scope.
+
 ### phase 4: verification and close-out
 
 The four-pass audit from last session, run over the combined result. This phase

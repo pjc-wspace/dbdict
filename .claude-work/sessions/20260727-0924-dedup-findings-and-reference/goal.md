@@ -74,6 +74,15 @@ document said never to use. Single-sourcing is the structural fix.
   - rewriting `reference.md`'s substance — this is a restructuring pass, not a
     second rewrite
 
+    > **Narrowed 2026-07-27T13:32, after phase 3 (user direction).** Phase 3's
+    > consistency check found four internal contradictions, and the user directed
+    > that they be fixed in-session rather than deferred. The exclusion now reads:
+    > out of scope is *new substance* — new measurement, new investigation, or new
+    > guidance. Correcting a statement that contradicts §4.1 is **in** scope, because
+    > it needs no new facts: §4.1 already holds them, and the summary had merely lost
+    > a quantifier or a qualifier in compressing them. Anything requiring a fact the
+    > document does not already contain remains a recorded follow-up.
+
 ## constraints
 
 - **Nothing may be lost silently.** Every deletion is either provably duplicated
