@@ -45,7 +45,7 @@ absent), 158 identifiers (27 absent), 66 numbers (7 absent)**.
 | The `Question.` framing opening §1–§4 | Why each probe was run at all — the one thing reference.md deliberately omits |
 | Single-column ENUM control: `["sad","ok","banana","happy"]` → `["sad","ok","happy"]` | Explains *why* the probe needed a multi-column table. The design rationale, not the finding |
 | Three blob payload classes (ASCII / non-UTF-8 / with-NUL) | The confound: the first two probes measured Julia's `Cstring` conversion and DuckDB's UTF-8 validation, neither of which is the cast under test |
-| §5b hypotheses H1/H2 and why each arm was uninformative | Explicitly recorded so they are not re-run |
+| ~~§5b hypotheses H1/H2 and why each arm was uninformative~~ | **CORRECTED in phase 2 — this row was wrong.** reference.md §5.1.4 already carries H1 and H2 in full, including "both arms were uninformative" and "underpowered, not a refutation". They are *not* omitted there, so keeping them here would recreate the duplication this session exists to remove. findings.md points at ref §5.1.4 instead. `goal.md` names them as a findings.md keeper on the same mistaken premise |
 | StructArray probe cases (`StructArray(id,name,score)`, `loc::StructArray(x,y)`) | Which cases were tried, i.e. how far the boundary was actually pushed |
 | `midbatch`, `skip_reason` harness internals | Names the mechanism a re-runner needs |
 | Findings' own run values (`(x = 1.0, y = 3.0)`) | reference.md has its own executed values; keeping both is fine as history |
@@ -83,3 +83,45 @@ Appendix A correction entries, comments inside executed examples.
 - every `file:line` re-resolves; every anchor resolves under both conventions
 - §4.1 / §8.1 / §8.2 agree row for row
 - `tokencov.py` re-run: section A items must no longer appear as absent
+
+---
+
+## F. Phase 2 execution record
+
+All six §A items moved into reference.md **before** any cut, then findings.md was
+reduced: 404 → 139 lines, 19,445 → 6,246 chars (68% smaller). reference.md
+1549 → 1593 lines, 78,029 → 81,551 chars.
+Claim inventory: findings 256 → 94, reference 765 → 800.
+
+Landing sites: A1 → §5.2.1 (six-row table plus a note that "reads back as" is the
+Julia type, since the example prints the SQL type) · A2 → §4.2 · A3 → §5.1.1 ·
+A4, A5 → §5.1.2 · A6 → §4.5.
+
+### Deliberate cuts, verified accounted for
+
+`tokencov.py` was re-run with the **pre-cut findings.md** as source and
+`findings.md + reference.md` concatenated as target — the direct "was anything
+lost" test. Absent tokens fell from 39 to 8 distinct; acting on the `sqllit` one
+took it to **7 at the phase-2 gate**, every one accounted for:
+
+| Absent token | Accounting |
+|---|---|
+| `table_scan.jl:201-205` | findings' range for the view creation; reference.md §4.2 cites the wider `table_scan.jl:200-208` for the function and `:201` for the store. Superseded, not lost. Phase 4 pass 2 re-resolves both against the driver source |
+| `DuckDB.append(ap, ::Vector{UInt8})` | §C probe-table cell. Fact in reference.md §5.1.1 prose and the §4.5 table row |
+| `duckdb_appender_error(handle)` | findings' incidental-defect note; reference.md §5.1.2 states it as "(`appender.jl:46`) passes the `Ref` box instead" |
+| `"happy"::String` | §C probe-table cell. reference.md §4.5 covers the ENUM label contract |
+| `"Happy"` | §C probe-table cell. reference.md §4.5: "Invalid and **wrong-case** labels are silently lost" |
+| `DECIMAL(_,17)` | findings' placeholder; reference.md carries the precise `DECIMAL(18,17)` |
+| `sqllit(::AbstractFloat)` | **acted on** — reference.md §5.2.1 named this only as "the `%.17e` method at line 32"; now named and cited as `bench_common.jl:32` |
+| `1.5.2.` | tokenizer artifact (trailing period); version pinned in reference.md §2 |
+
+### Other phase-2 verification
+
+- `tools/vruns.py` added — exact shared-substring check on whitespace-normalized
+  text, which is what "no verbatim run over N chars" actually asks. **0 runs ≥ 120
+  chars**; tightened to 60 it found one 78-char run this rewrite had itself
+  introduced (the out-of-scope sentence in §5), now cut. **0 runs ≥ 60 chars**
+- findings.md: 0 code fences, 0 table rows, no verdict lines
+- reference.md's 14 julia blocks are **byte-for-byte unchanged** (sha256 per block,
+  diffed against `HEAD`) — no edit touched executable content
+- all 45 internal anchors resolve against the 101 headings

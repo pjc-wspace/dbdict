@@ -520,7 +520,8 @@ real empty list, not NULL — the NULL behaviour is the *appender's* alone.
 ### 4.2 Registered tables — `register` (tier 1)
 
 `register_table(con_or_db, tbl, name)` stores `columntable(tbl)` in
-`db.registered_objects` and creates a SQL view
+`db.registered_objects` (`table_scan.jl:201` — the line the alias-based claim below
+rests on) and creates a SQL view
 `CREATE OR REPLACE VIEW "name" AS SELECT * FROM julia_tbl_scan('name')`
 (`table_scan.jl:200-208`); `unregister_table` drops it (`table_scan.jl:210-215`).
 
@@ -733,6 +734,13 @@ ENUM columns take the label as a `String`; the C appender casts VARCHAR→ENUM. 
 and **wrong-case** labels are silently lost (`verify_enum_appender.jl`) — see §5.1.2,
 which is the reason this tier needs guards.
 
+`FixedDecimal` is stringified the same way (`appender.jl:95`), and the table's
+"over-precision silently rounds" means exactly this: `FixedDecimal{Int64,4}(12.3456)`
+appended into a `DECIMAL(18,2)` column reads back `12.35` (`verify_enum_appender.jl`).
+The row lands and the count is right, so unlike a rejected label this one is invisible
+to a follow-up `COUNT(*)` — generated code has to check scale against the dictionary
+before the value reaches the appender.
+
 **The appender is not vectorized on the Julia side**: one `ccall` per cell plus one per
 `end_row` (`appender.jl:77-124`). `duckdb_append_data_chunk` exists (`api.jl:7309`) but
 no high-level Julia API uses it. That is why it costs ~8 Julia allocations per row on a
@@ -842,6 +850,12 @@ appender does cast VARCHAR→BLOB), but valid non-UTF-8 bytes are **silently los
 bytes containing `0x00` throw `ArgumentError: embedded NULs are not allowed in C
 strings`. Use prepared bind ([§4.4](#44-prepared-bind-the-blob-path-tier-3)).
 
+The non-UTF-8 loss raises **no Julia-level exception at any step**, yet 0 rows land.
+The only observable is the C error slot, which holds `Invalid unicode (byte sequence
+mismatch) detected in value construction` immediately after the `append`
+(`verify_blob_appender.jl`) — poll for it as in
+[§5.1.2](#512-appender-errors-are-silent-and-a-failed-cell-misaligns-later-columns).
+
 #### 5.1.2 Appender errors are silent, and a failed cell misaligns later columns
 
 `appender.jl:77-129` discards **every** `duckdb_state` return code; no method checks for
@@ -855,6 +869,17 @@ yields `[(1,"sad"), (2,"ok"), (4,"happy")]` — row `id=2` survives **carrying r
 enum value** (`verify_enum_appender.jl`). In a single-column table the same mechanism
 merely looks like "the bad row was dropped", which is why this needed a multi-column
 probe.
+
+The cascade then stops on a *second-order* error: with the columns shifted by one, the
+integer `3` is offered to the ENUM column, and the error slot reads `Failed to cast
+value: Unimplemented type for cast (INTEGER -> ENUM(...))`. That message is diagnostic —
+an `INTEGER -> ENUM` cast is not something generated code ever asks for, so seeing it
+means the cursor has already slipped.
+
+The other detection signal is at `end_row`: because the failed `append` never advanced
+the column counter, the error slot holds `Call to EndRow before all columns have been
+appended to!` after the `end_row` call (`verify_blob_appender.jl`). Polling only after
+`append` and not after `end_row` misses it.
 
 **A follow-up `COUNT(*)` is necessary but not sufficient.** It detects that something
 went wrong, but surviving rows may already pair the wrong values together, and a count
@@ -1051,6 +1076,24 @@ The literal is parsed as `DECIMAL(18,17)` **first** and only then converted; 17
 fractional digits cannot uniquely identify a Float64, so `::DOUBLE` does not help.
 Adding digits does not help either — the problem is the type the parser chooses.
 
+Six literal forms, all inserting the same Float64 `0.11914626526441173`
+(`bench_common.jl`, caught by its own content gate). "Reads back as" is the *Julia*
+type; the bare literal's SQL type is the `DECIMAL(18,17)` printed by the example
+below:
+
+| Literal form | Reads back as | Exact? |
+|---|---|---|
+| `0.11914626526441173` | `FixedDecimal{Int64,17}` | no — not even a DOUBLE |
+| `0.11914626526441173::DOUBLE` | `Float64` | **no — 1 ULP low** |
+| `%.17g` digits, bare | `FixedDecimal{Int64,17}` | no |
+| `%.17g` digits + `::DOUBLE` | `Float64` | **no — 1 ULP low** |
+| `1.19146265264411730e-01` (exponent form) | `Float64` | **yes** |
+| `'0.11914626526441173'::DOUBLE` (quoted) | `Float64` | **yes** |
+
+Rows 3-4 are why writing more digits is not a fix: explicit 17-significant-digit
+formatting reaches the identical DECIMAL parse. Only the last two forms bypass it —
+`%.17e` (used below) and the quoted-string cast are the two exact options.
+
 ```julia
 using DuckDB, Tables, Printf
 
@@ -1102,7 +1145,8 @@ Inserting the naive struct literal into a `STRUCT(x DOUBLE)` column gives
 
 `bench_common.jl` already handles this because its serializer recurses —
 `sqllit(::AbstractVector)` and `sqllit(::NamedTuple)` (`bench_common.jl:51-53`) both
-call back into `sqllit`, so nested floats reach the `%.17e` method at line 32. That is
+call back into `sqllit`, so nested floats reach `sqllit(::AbstractFloat)` — the `%.17e`
+method at `bench_common.jl:32`. That is
 why the struct/literal benchmark cells passed the content gate. **Reuse that serializer
 rather than writing a fresh one.**
 

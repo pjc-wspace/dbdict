@@ -66,28 +66,63 @@ deleted in this phase.
     fact has one nominated home; unique-substantive enumerated as 6 items;
     **10/10 spot-checks exact, 0 mismatched**
 
-### phase 2: reduce findings.md to a provenance record
+### phase 2: reduce findings.md to a provenance record — DONE 2026-07-27T12:57:22+12:00
 
-- [ ] move any **unique-substantive** content identified in phase 1 into
+- [x] move any **unique-substantive** content identified in phase 1 into
       `reference.md` first — findings.md must not be reduced while it is still the
       sole home of any fact
-- [ ] cut everything classified **duplicated**: verdict lines, capability and
+  - all six §A items landed before a single line was cut: A1 → §5.2.1 (the six-row
+    literal-form table, plus a note that "reads back as" is the *Julia* type since
+    the executed example prints the SQL type), A2 → §4.2, A3 → §5.1.1, A4 and A5 →
+    §5.1.2, A6 → §4.5
+- [x] cut everything classified **duplicated**: verdict lines, capability and
       probe result tables, mechanism explanations, the `ccall` recipe, console
       transcripts that `reference.md` reproduces, the phase-1 summary table, the
       "corrections to the driver study" list (now `reference.md` Appendix A)
-- [ ] keep and sharpen the provenance layer: what each probe set out to settle,
+- [x] keep and sharpen the provenance layer: what each probe set out to settle,
       what confounded it (the three blob payload classes; why the ENUM probe
-      needed a multi-column table), and §5b's two rejected hypotheses with why
-      each arm was uninformative
-- [ ] rewrite the header so the file's role is unmistakable — a lab notebook for
+      needed a multi-column table), and ~~§5b's two rejected hypotheses with why
+      each arm was uninformative~~
+  - **also: the §5b hypotheses were dropped from the keep-list — the plan's
+    premise for keeping them was wrong.** `dedup-plan.md` §B claimed
+    `reference.md` omits H1/H2; it does not. §5.1.4 carries both in full,
+    including the "both arms were uninformative" and "underpowered, not a
+    refutation" phrasing the plan cited as unique to findings.md. Keeping them
+    would have rebuilt the duplication this session exists to remove, while
+    looking like plan compliance. findings.md now points at ref §5.1.4.
+    Recorded as a struck-through correction in `dedup-plan.md` §B —
+    **note `goal.md` success-criterion 1 names them on the same wrong premise**
+- [x] rewrite the header so the file's role is unmistakable — a lab notebook for
       how the findings were arrived at, explicitly not a source of truth, pointing
       at `reference.md` for every verdict
-- [ ] every retained section keeps its script attribution, so a reader can still
+- [x] every retained section keeps its script attribution, so a reader can still
       get from "why was this probed" to the script that probed it
+  - each of the six sections now opens `**Script:** <file> → **ref §N**`, so the
+    hop from "why was this probed" to both the script and the verdict is one step
 - **verify:** no verdict, capability table, or code block survives in
   `findings.md` that `reference.md` also carries; `inventory-after` shows every
   cut line either present in `reference.md` or listed in `dedup-plan.md` as a
   deliberate cut; the two files share no verbatim run over 120 chars
+  - PASSED. findings.md: **0 code fences, 0 table rows, 0 verdict lines**.
+    Verbatim runs: **0 at ≥120 chars**. Loss check: **39 → 7** absent tokens, all
+    seven accounted for in `dedup-plan.md` §F. Sizes: findings.md 404 → 139 lines
+    (256 → 94 claims), reference.md 1549 → 1593 lines (765 → 800 claims)
+- also: **`tools/vruns.py` added** — exact shared-substring search over
+  whitespace-normalized text, which is what "no verbatim run over N chars"
+  literally asks; no similarity threshold to argue about. Phase 4's contract needs
+  it too. Tightening it past the planned 120 to 60 caught a **78-char run this
+  rewrite had itself introduced** (an out-of-scope sentence restated from §5.1.4
+  while writing findings §5), now cut — final state is 0 runs at ≥60
+- also: the loss check was run in the only direction that answers the question —
+  **pre-cut findings.md vs `findings.md + reference.md` concatenated**. Comparing
+  the two current files would score a claim deleted from both as consistent
+- also: one gap acted on rather than merely recorded, since it was a citation fix
+  inside scope — reference.md §5.2.1 identified `sqllit(::AbstractFloat)` only as
+  "the `%.17e` method at line 32"; now named and cited as `bench_common.jl:32`
+- also: guards confirming the edits stayed inside their blast radius —
+  reference.md's **14 julia blocks are byte-for-byte unchanged** (sha256 per block
+  diffed against `HEAD`), and **45/45 internal anchors resolve** against 101
+  headings, including the two cross-references added by the moves
 
 ### phase 3: single-source facts within reference.md
 
