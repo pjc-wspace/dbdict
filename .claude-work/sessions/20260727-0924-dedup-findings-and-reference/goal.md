@@ -31,10 +31,21 @@ document said never to use. Single-sourcing is the structural fix.
 ## success criteria
 
 1. **`findings.md` is a provenance record and nothing else.** It keeps only what
-   `reference.md` deliberately omits — the question each probe set out to answer,
-   the confounds hit along the way, and the §5b hypotheses tested-and-rejected. It
-   states no verdict, carries no capability table, and duplicates no code. A reader
-   cannot mistake it for a source of truth.
+   `reference.md` genuinely omits — the question each probe set out to answer, the
+   confounds hit along the way, how far each boundary was actually pushed, and the
+   harness internals a re-runner needs. It states no verdict, carries no capability
+   table, and duplicates no code. A reader cannot mistake it for a source of truth.
+
+   > **Amended 2026-07-27T12:57, phase 2.** This criterion originally also named
+   > "the §5b hypotheses tested-and-rejected" as a keeper, inherited from
+   > `dedup-plan.md` §B. The premise was wrong: `reference.md` §5.1.4 carries H1
+   > and H2 in full, including the exact phrasing the plan cited as unique to
+   > `findings.md`. Keeping them would have rebuilt the duplication this session
+   > exists to remove. `findings.md` points at ref §5.1.4 instead.
+   >
+   > The general form, now the test for every keep decision: *"the other document
+   > omits this"* is a falsifiable claim about the other document, not a
+   > conservative default. Verify it the same way a cut is verified.
 2. **Every driver fact has exactly one authoritative home in `reference.md`**, with
    all other mentions reduced to a cross-reference.
 3. **The actionable sections still stand alone.** §1 (executive summary) and §8
