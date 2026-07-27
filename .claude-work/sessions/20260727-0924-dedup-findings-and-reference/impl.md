@@ -225,26 +225,65 @@ rather than fixing only the reported instance. Four contradictions found, all fi
 > quantifier ("every column" → "the table has a…"), a qualifier ("only working path" →
 > "only working *bulk* path"), or a count. That is what made it safely in scope.
 
-### phase 4: verification and close-out
+### phase 4: verification and close-out — DONE 2026-07-27T15:19:52+12:00
 
 The four-pass audit from last session, run over the combined result. This phase
 exists because the last session proved that reading a document carefully does not
-find its contradictions.
+find its contradictions. **It re-earned its place: pass 3 found a fifth
+contradiction that had survived a full rewrite, an adversarial review, and three
+phases of this session.**
 
-- [ ] **pass 1 — executable**: extract all julia blocks, run every one, diff
+- [x] **pass 1 — executable**: extract all julia blocks, run every one, diff
       actual output against documented output, hash the blocks against what ran
-- [ ] **pass 2 — citations**: re-resolve every `file:line` against the installed
+  - `tools/runblocks.py` added — extracts each block with the plain ``` block that
+    follows it as expected output, runs each in its own process, 6-way concurrent
+    (5.4s wall-clock; serial would be ~10× that for no benefit)
+  - **14 blocks: 12 documented outputs match exactly, 1 fragment, 1 with nothing
+    claimed. 0 failing**
+  - **also: the harness reported false mismatches on its first run.** DataFrames
+    emits ANSI colour codes even when stdout is a pipe, so every DataFrame-printing
+    example diffed against the plain text the doc records. `norm()` now strips ANSI.
+    Opposite failure direction to the phase-3 anchors bug — this one cries wolf
+    rather than staying silent, but a checker you learn to skim is nearly as useless
+  - **also: §8.2's "reproduced in full so this section stands alone" block does not
+    run** — it quotes §4.5 and §5.1.2 and omits their `using DuckDB` and open `con`.
+    No false claim (it has no documented output), but indistinguishable from a
+    runnable example to both a reader and the audit. Now carries a `# fragment`
+    header naming its dependencies, which `runblocks.py` recognises and skips
+- [x] **pass 2 — citations**: re-resolve every `file:line` against the installed
       driver source; re-resolve every internal anchor under both anchor-generation
       conventions
-- [ ] **pass 3 — internal consistency**: §4.1 vs §8.1 vs §8.2 vs §1's never-emit
-      list; grep every absolute (`never`, `every`, `always`, `only`, `no cell`)
-      and check it against the data
-- [ ] **pass 4 — inventory diff**: `inventory-before.tsv` vs `inventory-after.tsv`
-      — prove no claim was lost. Every delta is accounted for in `dedup-plan.md`
-- [ ] record any gap found as a follow-up rather than fixing by measurement
-      (`goal.md` scope)
+  - `tools/citations.py` added. **160/160 resolve** in reference.md against
+    `~/.julia/packages/DuckDB/2J7sd/src`, **2/2** in findings.md, **46/46 anchors**
+  - 10 load-bearing citations spot-checked against the actual source line (table in
+    `dedup-plan.md` §G), including `api.jl:7261` → `(duckdb_appender, Ref{Cvoid},
+    idx_t),` and `appender.jl:56` → `finalizer(_close_appender, con)`, which
+    independently confirms last session's `:59` → `:56` correction
+- [x] **pass 3 — internal consistency**: §4.1 vs §8.1 vs §8.2 vs §1's never-emit
+      list; grep every absolute and check it against the data
+  - **five contradictions found across the session, all fixed** — four in the
+    phase-3 addendum, plus §1 labelling a 9-item list "**The** never-emit list"
+    where §8.2 carries 16. A generator author treating §1 as authoritative would
+    have missed seven, all value-level. §1 now names §8.2 as the authority
+  - **all five sat in *summary* constructs** — executive summary, tier table, guard
+    count, list label — and none in the sections holding evidence
+- [x] **pass 4 — inventory diff**: prove no claim was lost
+  - definitive form: **all pre-session content** (both files at `fff0689`) vs **all
+    current content**, rather than after-vs-after which would score a claim deleted
+    from both as consistent
+  - **0 error strings absent**; 1 citation, 6 identifiers, 6 numbers — every one
+    enumerated in `dedup-plan.md` §F or §D2. 1021 → 913 claims
+- [x] record any gap found as a follow-up rather than fixing by measurement
+  - **superseded by user direction:** the §8.1 tier gap was fixed in-session, and
+    `goal.md`'s scope narrowed to permit corrections needing no new facts. The
+    distinction held — every fix used facts §4.1 already carried
 - **verify:** all four passes clean; both files committed; line-count and
   duplication delta reported against the phase-1 baseline
+  - PASSED. All four clean. Both files committed (`3da2b32`); working tree clean
+    apart from two untracked research dirs that are not this session's
+  - **delta vs baseline `fff0689`:** findings.md **404 → 139** lines (−265),
+    reference.md 1549 → 1617 (+68). Cross-file verbatim runs ≥ 120 chars:
+    **10 → 0**. Claim inventory 1021 → 913 (findings 256 → 94, reference 765 → 819)
 
 > optional, user's call at phase 4: dispatch an adversarial reviewer over the
 > result, as in the last session. Not planned in — it is a user decision, and the
