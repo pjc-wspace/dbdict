@@ -125,6 +125,80 @@ phase 2 moves had changed several counts. Actions taken against §D:
 
 ---
 
+## G. Phase 4 audit results — all four passes clean
+
+### Pass 1 — executable (`tools/runblocks.py`)
+
+Every ```julia block extracted, run in its own process, stdout diffed against the
+plain ``` block the document says it prints. **14 blocks: 12 documented outputs
+match exactly, 1 fragment, 1 runs with nothing claimed about its output. 0 failing.**
+5.4s wall-clock at 6-way concurrency.
+
+Two things the first run exposed, both fixed:
+
+- **The harness reported a false mismatch.** DataFrames emits ANSI colour codes even
+  when stdout is a pipe, so every DataFrame-printing example diffed against the
+  plain text the document records. `norm()` now strips ANSI. A checker that cries
+  wolf on formatting is one you learn to skim.
+- **§8.2's "reproduced in full so this section stands alone" block does not run.**
+  It quotes §4.5 and §5.1.2 and omits their `using DuckDB` and open `con`. Nothing
+  false was *claimed* — it has no documented output — but it was indistinguishable
+  from a runnable example to both a reader and the audit. Now carries a
+  `# fragment` header naming its dependencies, which `runblocks.py` recognises and
+  skips.
+
+### Pass 2 — citations (`tools/citations.py`, `tools/anchors.py`)
+
+**160/160 `file:line` citations resolve** against `~/.julia/packages/DuckDB/2J7sd/src`
+(plus this directory for `bench_common.jl` etc.); findings.md's 2/2 resolve.
+**46/46 internal anchors resolve.** Ten load-bearing citations spot-checked against
+the actual source line:
+
+| Citation | Line reads | Underwrites |
+|---|---|---|
+| `api.jl:7261` | `(duckdb_appender, Ref{Cvoid}, idx_t),` | the BLOB defect — the argument tuple itself |
+| `api.jl:6820` | "Closes the appender by flushing all intermediate states…" | there is no discard path |
+| `appender.jl:46` | `error_ptr = duckdb_appender_error(handle)` | the `Ref` box bug |
+| `appender.jl:56` | `finalizer(_close_appender, con)` | GC leak — **confirms last session's `:59`→`:56` correction** |
+| `appender.jl:95` | `append(…, val::FixedDecimal) = append(appender, string(val));` | decimal stringify (item A6) |
+| `appender.jl:108-111` | `if length(val) == 0` | empty vector → NULL |
+| `logical_type.jl:64-66` | `function create_logical_type(::Type{T}) where {T}` | the throwing fallback |
+| `statement.jl:65` | `duckdb_bind_varchar_length(…, ncodeunits(val));` | the *correct* scalar path |
+| `value.jl:51` | `duckdb_create_varchar_length(val, length(val))` | non-ASCII truncation — the `length` vs `ncodeunits` contrast |
+| `table_scan.jl:201` | `con.db.registered_objects[name] = columntable(tbl)` | zero-copy registration (item A2) |
+
+### Pass 3 — internal consistency
+
+Five contradictions found and fixed, four in the phase-3 addendum plus one here:
+
+5. **§1 called its 9-item list "The never-emit list"** when §8.2 carries **16**. The
+   definite article reads as complete; a generator author treating §1 as
+   authoritative would miss seven, all value-level (empty vector, wrong-case ENUM,
+   over-precision decimal, sub-µs time, ARRAY select, multi-statement, non-ASCII in
+   lists). §1 now labels itself a summary and names §8.2 as the authority.
+
+All five sit in *summary* constructs — an executive summary, a tier table, a guard
+count, a list label — and none in the sections holding the evidence. **Compression is
+where contradictions live**: dropping a quantifier ("every column"), a qualifier
+("only working *bulk* path") or a count still reads as fluent, confident prose.
+
+### Pass 4 — inventory diff
+
+Definitive test: **all pre-session content** (findings + reference at `fff0689`)
+against **all current content**. 1021 → 913 claims; findings 256 → 94,
+reference 765 → 819.
+
+| Class | In source | Absent | Verdict |
+|---|---|---|---|
+| error strings | 18 | **0** | — |
+| citations | 159 | 1 | `table_scan.jl:201-205`, superseded by `:200-208` + `:201` |
+| identifiers | 595 | 6 | §C probe-table cells and superseded spellings (§F) |
+| numbers | 445 | 6 | 1 trailing-period artifact + 5 rounded restatements whose precise originals are in §7.2/§7.4 (§D2) |
+
+Every absent token is enumerated in §F or §D2. **No claim was lost.**
+
+---
+
 ## F. Phase 2 execution record
 
 All six §A items moved into reference.md **before** any cut, then findings.md was

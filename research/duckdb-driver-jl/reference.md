@@ -107,8 +107,11 @@ different cases, one will be selected randomly"
 explicit `AS` alias is the only way to make Julia-side names deterministic
 ([§5.2.2](#522-identifier-case-rules)).
 
-**The never-emit list** — each expanded with a replacement in
-[§8.2](#82-never-emit-and-emit-instead):
+**The never-emits that bite hardest.** This is a summary, **not the whole list** —
+[§8.2](#82-never-emit-and-emit-instead) carries all **16**, each with a replacement,
+and is the authority. The seven not shown here are mostly value-level traps (empty
+vectors, wrong-case ENUM labels, over-precision decimals, sub-µs times) that a
+generator must handle even though no single one is dramatic:
 
 - appender for a `LIST` column (segfaults the process)
 - `duckdb_append_blob` (throws before reaching C)
@@ -1465,6 +1468,9 @@ cannot see.
 alone:
 
 ```julia
+# fragment — quotes §4.5 and §5.1.2; assumes their `using DuckDB` and open `con`.
+# copy those blocks to run it.
+
 # rule 3 — appender lifetime inside the transaction
 DBInterface.transaction(con) do
   ap = DuckDB.Appender(con, "t")
