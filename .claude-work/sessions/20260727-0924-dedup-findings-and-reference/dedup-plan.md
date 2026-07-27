@@ -75,6 +75,45 @@ Appendix A correction entries, comments inside executed examples.
 | threads hurt | 10 | 5 | §7.4 | §2 and §7.1 mention it as context — check for restatement |
 | empty vec → NULL | 7 | 5 | §5.1.5 | §7.1's methodology note explains *why the list profile avoids them* — that is provenance for the benchmark, keep |
 
+## D2. Phase 3 execution record
+
+Mention map rebuilt with `tools/mentions.py` rather than reused from phase 1 — the
+phase 2 moves had changed several counts. Actions taken against §D:
+
+| Fact | Action | Outcome |
+|---|---|---|
+| LIST segfault | §7.2's "not measured to crash at 10k" moved into §5.1.4; §7.2 reduced to a pointer. §8.4's clause given §5.1.4/§5.1.5 pointers | 7 → 5 prose sites |
+| blob `Ref{Cvoid}` | §4.4's example comment re-explained the whole `Ref{Cvoid}`/`Cvoid === Nothing` chain — cut to one line + §5.1.1 pointer | 10 → 9 mentions |
+| column misalignment | §8.1's one-clause contrast had no pointer; added §5.1.2 | 3 → 2 prose |
+| appender GC leak | **no action — §D's flag was a false positive.** §5.1.4's "finalizer" hits are H1's hypothesis text, a different fact | verified |
+| chunk `columnnames` | none needed, already lean | — |
+| 1 ULP / `%.17e` | **no action — §4.6 already conformed.** Requirement 1 is one clause + §5.2.1 pointer; requirement 2 (DuckType dispatch) is not duplicated | verified |
+| register 3.4×/538× | §1 carried both ratios *and* both absolute pairs; reduced to the two ratios + §7.2. §8.1 reduced to one ratio + §7.2 | 3 prose, now conforming |
+| threads hurt | §1's absolute figures reduced to one clause + §7.4. **§2 and §7.1 were false positives** — §2's hit is the CPU spec row, §7.1's is benchmark provenance §D says to keep | verified |
+| empty vec → NULL | **no action.** §5.1.5 is intact — the `empty vec` pattern missed "empty *Julia* vector" | tool artifact |
+
+### Structural checks
+
+- **Two-hop lookups: 0.** The one flagged section (`## 4. Writing`) is a container
+  whose body is a single orienting nav line, with its subsections immediately below
+- **§4.1 / §8.1 / §8.2 agree**, with one gap recorded and *not* fixed —
+  `.claude-work/notes/20260727-1306-tier-3-precondition-omits-the-bind-type-gaps.md`.
+  §8.1's tier-3 precondition tests the column that triggered the tier, not every
+  column, so a BLOB+DECIMAL or BLOB+UUID table selects a tier that cannot write it.
+  Same defect class as last session's BLOB contradiction. Fixing it is codegen
+  guidance, which `goal.md` puts out of scope
+- **Loss check** (reference.md pre-phase-3 vs post): 0 citations, 0 error strings,
+  0 identifiers absent; 5 numbers absent, every one a rounded restatement whose
+  precise original is in §7.2 or §7.4 (e.g. §1's "0.73 → 5.71 ms" for §7.4's
+  `730.721 µs → 5.709 ms`)
+- **`tools/anchors.py` added**, replacing an ad-hoc check that was **counting julia
+  `#` comments as markdown headings** — it reported 101 headings where there are 56,
+  inflating the set of anchors a link could "resolve" to. Cannot cause a false
+  failure, but can hide a real one. Now fence-aware and tests both anchor
+  conventions: **45 links, 0 unresolved**
+- 1 julia block changed (the §4.4 comment), 13 unchanged — phase 4 pass 1 must
+  re-run at minimum that block
+
 ## E. Verification contract for phase 4
 
 - `inventory-after.tsv` vs `inventory-before.tsv`: every dropped claim is in

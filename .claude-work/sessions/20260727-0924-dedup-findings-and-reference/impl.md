@@ -124,22 +124,67 @@ deleted in this phase.
   diffed against `HEAD`), and **45/45 internal anchors resolve** against 101
   headings, including the two cross-references added by the moves
 
-### phase 3: single-source facts within reference.md
+### phase 3: single-source facts within reference.md — DONE 2026-07-27T13:12:25+12:00
 
-- [ ] for each fact in the map: keep the canonical explanation, reduce every
+- [x] for each fact in the map: keep the canonical explanation, reduce every
       **redundant** site to a cross-reference
-- [ ] preserve the standalone contract from `goal.md` §3 — §1 and §8 keep a
+  - **also: the map was rebuilt, not reused.** `tools/mentions.py` added — walks the
+    file tracking the innermost heading and classifies each hit as fence / pointer /
+    prose. Phase 1's counts were stale because phase 2 had moved content, and
+    **three of the nine §D entries turned out to be wrong**: the §5.1.4 "GC leak"
+    flag was H1's hypothesis text (a different fact sharing the word "finalizer"),
+    §4.6 already conformed, and §5.1.5 was intact — §D's `empty vec` pattern had
+    missed "empty *Julia* vector". Acting on the stale map would have deleted a
+    hypothesis section and "fixed" two correct ones
+  - actions taken: LIST-segfault §7.2 → pointer with its 10k clarification moved
+    into §5.1.4 (7 → 5 prose sites); §4.4's example comment cut from a three-line
+    re-explanation of the `Ref{Cvoid}` chain to one line + pointer; §8.1's
+    misalignment clause given its missing §5.1.2 pointer (3 → 2 prose)
+- [x] preserve the standalone contract from `goal.md` §3 — §1 and §8 keep a
       one-clause statement plus a pointer. A generator author must still be able
       to act from §8.2 alone without paging back to §5
-- [ ] check the reverse failure mode the goal warns about: no fact should now
-      require following two hops to reach. If a cross-reference points at a
-      cross-reference, the canonical home is in the wrong section
-- [ ] re-check the sections most likely to drift apart — the §4.1 capability
+  - contract holds: all 7 defect entries and the 9-item never-emit list in §1 are
+    one clause + pointer, and §8.2's 16 action rows are untouched
+  - **also: §1 was over-full and §D had not flagged it.** It carried both perf
+    ratios *and* both absolute pairs (58.1 vs 196.0 ms; 14.9k vs 8.0M), plus §7.4's
+    thread figures. Reduced to the two ratios + §7.2, and one clause + §7.4
+- [x] check the reverse failure mode the goal warns about: no fact should now
+      require following two hops to reach
+  - **0 two-hop lookups.** The one section flagged by the check (`## 4. Writing`) is
+    a container whose entire body is a single orienting nav line, with its
+    subsections immediately below — not a redirection
+- [x] re-check the sections most likely to drift apart — the §4.1 capability
       matrix, §8.1 tiers, §8.2 rules — since that trio is where the BLOB
       contradiction came from. They must agree row for row after the pass
+  - BLOB, LIST, ENUM, DECIMAL, UUID, empty-vector, TIME and ARRAY rows all agree
+    across §4.1 / §8.1 / §8.2. Last session's BLOB contradiction has not regressed
+  - **also: found a NEW inconsistency of the same class, recorded and NOT fixed** —
+    `.claude-work/notes/20260727-1306-tier-3-precondition-omits-the-bind-type-gaps.md`.
+    §8.1's tier-3 precondition tests the column that *triggered* the tier, not every
+    column, but prepared bind cannot write DECIMAL or UUID (§4.1, §4.4, §5.3 all say
+    so). A BLOB+DECIMAL table selects a tier that cannot write it; BLOB+UUID has no
+    working non-literal path at all. Fixing it is codegen guidance, which `goal.md`
+    puts out of scope — the note carries three options for the codegen session
 - **verify:** each mapped fact has exactly one full explanation; every remaining
   mention is a pointer or an allowed action-restatement; §4.1 / §8.1 / §8.2 agree;
   no two-hop lookups
+  - PASSED, with one qualification stated plainly: the trio agrees on every row the
+    dedup pass touched, but §8.1's tier-3 precondition carries the pre-existing
+    mixed-type gap above. It is recorded as a follow-up, not silently passed
+  - loss check (reference.md pre-phase-3 vs post): **0 citations, 0 error strings,
+    0 identifiers absent**; 5 numbers absent, every one a rounded restatement whose
+    precise original is in §7.2 or §7.4 (§1's "0.73 → 5.71 ms" is §7.4's
+    `730.721 µs → 5.709 ms`)
+  - cross-file: still **0 verbatim runs ≥ 120 chars**
+- also: **`tools/anchors.py` added, replacing an ad-hoc check that was broken.** The
+  old one parsed `^#{1,6}\s+` without skipping code fences, so julia `#` comments
+  counted as headings — 101 reported against 56 real. That inflates the set of
+  anchors a link can "resolve" to, so it can only ever produce a **false pass**,
+  never a false alarm. Caught because deleting two comment lines moved the heading
+  count, which is impossible if the parser is right. Now fence-aware and tests both
+  anchor conventions: **45 links, 0 unresolved**
+- also: 1 julia block changed (§4.4's comment), 13 byte-for-byte unchanged — phase 4
+  pass 1 must re-run at minimum that block
 
 ### phase 4: verification and close-out
 
