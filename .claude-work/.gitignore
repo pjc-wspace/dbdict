@@ -1,2 +1,10 @@
 # override parent ignores — everything here is tracked
 !*
+
+# ...except python bytecode from the audit tools. verified 2026-07-28: neither
+# the repo .gitignore nor core.excludesfile carries a __pycache__ or *.pyc
+# pattern, so nothing was ignoring them anywhere and `git add` would sweep them
+# up. (an earlier version of this comment blamed the `!*` above for
+# re-including them — that was wrong; there was nothing to re-include.)
+__pycache__/
+*.pyc
