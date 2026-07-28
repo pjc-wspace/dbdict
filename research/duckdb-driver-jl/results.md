@@ -25,10 +25,15 @@ controls DuckDB's parallelism too.
 
 ## Verification scripts
 
-- `verify_appender_transaction.jl` — pass
-- `verify_blob_appender.jl` — pass
-- `verify_enum_appender.jl` — pass
-- `verify_structarray_register.jl` — pass
+These are observational probes, not pass/fail tests — several deliberately
+record broken driver behaviour. "ran" means the process completed without
+crashing; it does **not** mean the behaviour it probed was correct. Findings
+are in `logs/`. Reported across all 4 runs.
+
+- `verify_appender_transaction.jl` — t1-a: ran · t1-b: ran · tauto-a: ran · tauto-b: ran
+- `verify_blob_appender.jl` — t1-a: ran · t1-b: ran · tauto-a: ran · tauto-b: ran
+- `verify_enum_appender.jl` — t1-a: ran · t1-b: ran · tauto-a: ran · tauto-b: ran
+- `verify_structarray_register.jl` — t1-a: ran · t1-b: ran · tauto-a: ran · tauto-b: ran
 
 `verify_list_appender_gc.jl` is excluded from automated runs: its
 `natural` mode segfaults by design (findings.md §5).
@@ -39,95 +44,95 @@ controls DuckDB's parallelism too.
 
 | profile | scale | path | median | rows/s | allocs | memory | samples |
 |---|---|---|---|---|---|---|---|
-| flat | 10000 | appender | 2.051 ms | 4875727 | 76936 | 1.174 MiB | 2133 |
-| flat | 10000 | register | 1.015 ms | 9855023 | 329 | 10.047 KiB | 4260 |
+| flat | 10000 | appender | 1.998 ms | 5004780 | 76936 | 1.174 MiB | 2176 |
+| flat | 10000 | register | 1.001 ms | 9992556 | 329 | 10.047 KiB | 4299 |
 | flat | 10000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| flat | 10000 | literal | 155.914 ms | 64138 | 159285 | 9.010 MiB | 30 |
-| flat | 100000 | appender | 19.377 ms | 5160794 | 796936 | 12.160 MiB | 250 |
-| flat | 100000 | register | 6.116 ms | 16350810 | 1649 | 43.734 KiB | 784 |
+| flat | 10000 | literal | 165.023 ms | 60598 | 159285 | 9.010 MiB | 29 |
+| flat | 100000 | appender | 19.491 ms | 5130654 | 796936 | 12.160 MiB | 246 |
+| flat | 100000 | register | 5.984 ms | 16711230 | 1649 | 43.734 KiB | 799 |
 | flat | 100000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| flat | 100000 | literal | 1.718 s | 58199 | 1620435 | 90.522 MiB | 3 |
-| flat | 1000000 | appender | 195.964 ms | 5102980 | 7996936 | 122.024 MiB | 26 |
-| flat | 1000000 | register | 58.115 ms | 17207268 | 14853 | 380.672 KiB | 85 |
+| flat | 100000 | literal | 1.659 s | 60270 | 1620435 | 90.522 MiB | 4 |
+| flat | 1000000 | appender | 194.547 ms | 5140146 | 7996936 | 122.024 MiB | 26 |
+| flat | 1000000 | register | 57.078 ms | 17520022 | 14853 | 380.672 KiB | 87 |
 | flat | 1000000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| flat | 1000000 | literal | 17.667 s | 56604 | 16231935 | 905.573 MiB | 1 |
-| rich | 10000 | appender | 12.313 ms | 812157 | 196541 | 6.006 MiB | 377 |
+| flat | 1000000 | literal | 17.658 s | 56631 | 16231935 | 905.573 MiB | 1 |
+| rich | 10000 | appender | 12.397 ms | 806642 | 196541 | 6.006 MiB | 374 |
 | rich | 10000 | register | _skipped_ | — | — | — | UUID column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
 | rich | 10000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| rich | 10000 | literal | 148.721 ms | 67240 | 238890 | 9.727 MiB | 32 |
-| rich | 100000 | appender | 122.023 ms | 819519 | 1988096 | 60.403 MiB | 41 |
+| rich | 10000 | literal | 153.649 ms | 65083 | 238890 | 9.727 MiB | 31 |
+| rich | 100000 | appender | 115.312 ms | 867214 | 1988096 | 60.403 MiB | 43 |
 | rich | 100000 | register | _skipped_ | — | — | — | UUID column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
 | rich | 100000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| rich | 100000 | literal | 1.677 s | 59646 | 2411595 | 97.623 MiB | 4 |
-| rich | 1000000 | appender | 1.614 s | 619405 | 19908576 | 604.570 MiB | 4 |
+| rich | 100000 | literal | 1.675 s | 59719 | 2411595 | 97.623 MiB | 4 |
+| rich | 1000000 | appender | 1.529 s | 653850 | 19908576 | 604.570 MiB | 4 |
 | rich | 1000000 | register | _skipped_ | — | — | — | UUID column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
 | rich | 1000000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| rich | 1000000 | literal | 18.234 s | 54844 | 24143575 | 976.683 MiB | 1 |
+| rich | 1000000 | literal | 17.933 s | 55762 | 24143575 | 976.683 MiB | 1 |
 | struct | 10000 | appender | _skipped_ | — | — | — | no NamedTuple method — appender.jl:116-119 throws NotImplementedException |
 | struct | 10000 | register | _skipped_ | — | — | — | NamedTuple column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
-| struct | 10000 | register_flat | 730.721 μs | 13685114 | 234 | 163.172 KiB | 4874 |
-| struct | 10000 | literal | 94.988 ms | 105277 | 220351 | 17.462 MiB | 46 |
+| struct | 10000 | register_flat | 719.985 μs | 13889178 | 234 | 163.172 KiB | 4878 |
+| struct | 10000 | literal | 99.806 ms | 100194 | 220351 | 17.462 MiB | 44 |
 | struct | 100000 | appender | _skipped_ | — | — | — | no NamedTuple method — appender.jl:116-119 throws NotImplementedException |
 | struct | 100000 | register | _skipped_ | — | — | — | NamedTuple column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
-| struct | 100000 | register_flat | 3.022 ms | 33088752 | 1114 | 1.555 MiB | 1068 |
-| struct | 100000 | literal | 1.042 s | 95961 | 2203501 | 174.581 MiB | 5 |
+| struct | 100000 | register_flat | 2.986 ms | 33487028 | 1114 | 1.555 MiB | 1081 |
+| struct | 100000 | literal | 1.063 s | 94050 | 2203501 | 174.581 MiB | 5 |
 | struct | 1000000 | appender | _skipped_ | — | — | — | no NamedTuple method — appender.jl:116-119 throws NotImplementedException |
 | struct | 1000000 | register | _skipped_ | — | — | — | NamedTuple column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
-| struct | 1000000 | register_flat | 29.839 ms | 33512735 | 9918 | 15.509 MiB | 110 |
-| struct | 1000000 | literal | 12.929 s | 77346 | 22035001 | 1.705 GiB | 1 |
+| struct | 1000000 | register_flat | 28.929 ms | 34567880 | 9918 | 15.509 MiB | 115 |
+| struct | 1000000 | literal | 11.915 s | 83925 | 22035001 | 1.705 GiB | 1 |
 | list | 10000 | appender | _skipped_ | — | — | — | SEGFAULTS at ~1M appends — see verify_list_appender_gc.jl / findings.md §5 |
 | list | 10000 | register | _skipped_ | — | — | — | Vector column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
 | list | 10000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| list | 10000 | literal | 91.776 ms | 108961 | 179611 | 6.174 MiB | 49 |
+| list | 10000 | literal | 97.866 ms | 102180 | 179611 | 6.174 MiB | 48 |
 | list | 100000 | appender | _skipped_ | — | — | — | SEGFAULTS at ~1M appends — see verify_list_appender_gc.jl / findings.md §5 |
 | list | 100000 | register | _skipped_ | — | — | — | Vector column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
 | list | 100000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| list | 100000 | literal | 1.033 s | 96810 | 1803261 | 62.006 MiB | 5 |
+| list | 100000 | literal | 1.064 s | 93972 | 1803261 | 62.006 MiB | 5 |
 | list | 1000000 | appender | _skipped_ | — | — | — | SEGFAULTS at ~1M appends — see verify_list_appender_gc.jl / findings.md §5 |
 | list | 1000000 | register | _skipped_ | — | — | — | Vector column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
 | list | 1000000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| list | 1000000 | literal | 11.483 s | 87085 | 18036089 | 620.220 MiB | 1 |
+| list | 1000000 | literal | 11.362 s | 88016 | 18036089 | 620.220 MiB | 1 |
 
 ### Reads
 
 | profile | scale | path | median | rows/s | allocs | memory | samples |
 |---|---|---|---|---|---|---|---|
-| flat | 10000 | materialized | 412.382 μs | 24249332 | 10268 | 603.320 KiB | 5082 |
-| flat | 10000 | streaming | 355.655 μs | 28117136 | 10452 | 606.984 KiB | 10000 |
-| flat | 10000 | stream_first | 246.058 μs | — | 2161 | 124.883 KiB | 10000 |
-| flat | 100000 | materialized | 3.212 ms | 31133192 | 101634 | 5.858 MiB | 717 |
-| flat | 100000 | streaming | 2.764 ms | 36181034 | 104104 | 5.915 MiB | 1363 |
-| flat | 100000 | stream_first | 403.819 μs | — | 2161 | 124.883 KiB | 10000 |
-| flat | 1000000 | materialized | 32.184 ms | 31071157 | 1015271 | 58.541 MiB | 70 |
-| flat | 1000000 | streaming | 43.610 ms | 22930601 | 1040619 | 59.143 MiB | 110 |
-| flat | 1000000 | stream_first | 420.360 μs | — | 2161 | 124.883 KiB | 10000 |
-| rich | 10000 | materialized | 1.309 ms | 7640190 | 30225 | 983.234 KiB | 2603 |
-| rich | 10000 | streaming | 1.230 ms | 8130769 | 30367 | 985.875 KiB | 3633 |
-| rich | 10000 | stream_first | 426.444 μs | — | 6235 | 202.438 KiB | 10000 |
-| rich | 100000 | materialized | 12.484 ms | 8010500 | 301371 | 9.572 MiB | 257 |
-| rich | 100000 | streaming | 11.530 ms | 8673127 | 303315 | 9.618 MiB | 390 |
-| rich | 100000 | stream_first | 554.781 μs | — | 6235 | 202.438 KiB | 8086 |
-| rich | 1000000 | materialized | 181.058 ms | 5523081 | 3012799 | 95.682 MiB | 23 |
-| rich | 1000000 | streaming | 155.877 ms | 6415318 | 3032848 | 96.174 MiB | 33 |
-| rich | 1000000 | stream_first | 583.164 μs | — | 6235 | 202.438 KiB | 7299 |
-| struct | 10000 | materialized | 7.755 ms | 1289461 | 120945 | 3.686 MiB | 548 |
-| struct | 10000 | streaming | 7.535 ms | 1327113 | 121153 | 3.691 MiB | 625 |
-| struct | 10000 | stream_first | 1.673 ms | — | 24873 | 775.109 KiB | 2768 |
-| struct | 100000 | materialized | 74.223 ms | 1347285 | 1210295 | 36.843 MiB | 57 |
-| struct | 100000 | streaming | 77.997 ms | 1282105 | 1213009 | 36.917 MiB | 65 |
-| struct | 100000 | stream_first | 1.772 ms | — | 24873 | 775.109 KiB | 2569 |
-| struct | 1000000 | materialized | 854.118 ms | 1170799 | 12104666 | 368.431 MiB | 6 |
-| struct | 1000000 | streaming | 865.208 ms | 1155791 | 12132741 | 369.209 MiB | 6 |
-| struct | 1000000 | stream_first | 1.837 ms | — | 24873 | 775.109 KiB | 2322 |
-| list | 10000 | materialized | 652.060 μs | 15336012 | 30490 | 1.280 MiB | 3831 |
-| list | 10000 | streaming | 609.986 μs | 16393819 | 30606 | 1.281 MiB | 6035 |
-| list | 10000 | stream_first | 293.580 μs | — | 6278 | 269.461 KiB | 10000 |
-| list | 100000 | materialized | 5.588 ms | 17896004 | 304100 | 12.794 MiB | 402 |
-| list | 100000 | streaming | 5.605 ms | 17841942 | 305710 | 12.829 MiB | 658 |
-| list | 100000 | stream_first | 488.739 μs | — | 6278 | 269.461 KiB | 8841 |
-| list | 1000000 | materialized | 55.265 ms | 18094474 | 3040181 | 127.895 MiB | 39 |
-| list | 1000000 | streaming | 61.697 ms | 16208129 | 3056749 | 128.277 MiB | 75 |
-| list | 1000000 | stream_first | 537.499 μs | — | 6278 | 269.461 KiB | 7908 |
+| flat | 10000 | materialized | 395.081 μs | 25311265 | 10268 | 603.320 KiB | 5088 |
+| flat | 10000 | streaming | 356.562 μs | 28045613 | 10452 | 606.984 KiB | 10000 |
+| flat | 10000 | stream_first | 226.883 μs | — | 2161 | 124.883 KiB | 10000 |
+| flat | 100000 | materialized | 3.133 ms | 31915977 | 101634 | 5.858 MiB | 739 |
+| flat | 100000 | streaming | 2.757 ms | 36269790 | 104104 | 5.914 MiB | 1378 |
+| flat | 100000 | stream_first | 356.172 μs | — | 2161 | 124.883 KiB | 10000 |
+| flat | 1000000 | materialized | 32.353 ms | 30908889 | 1015271 | 58.541 MiB | 71 |
+| flat | 1000000 | streaming | 43.828 ms | 22816477 | 1040619 | 59.137 MiB | 112 |
+| flat | 1000000 | stream_first | 365.235 μs | — | 2161 | 124.883 KiB | 10000 |
+| rich | 10000 | materialized | 1.290 ms | 7751103 | 30225 | 983.234 KiB | 2636 |
+| rich | 10000 | streaming | 1.231 ms | 8122890 | 30367 | 985.875 KiB | 3671 |
+| rich | 10000 | stream_first | 399.663 μs | — | 6235 | 202.438 KiB | 10000 |
+| rich | 100000 | materialized | 12.291 ms | 8135829 | 301371 | 9.572 MiB | 260 |
+| rich | 100000 | streaming | 11.776 ms | 8491931 | 303315 | 9.617 MiB | 388 |
+| rich | 100000 | stream_first | 505.165 μs | — | 6235 | 202.438 KiB | 9169 |
+| rich | 1000000 | materialized | 182.738 ms | 5472310 | 3012799 | 95.682 MiB | 23 |
+| rich | 1000000 | streaming | 152.862 ms | 6541846 | 3032905 | 96.176 MiB | 34 |
+| rich | 1000000 | stream_first | 520.809 μs | — | 6235 | 202.438 KiB | 8427 |
+| struct | 10000 | materialized | 7.883 ms | 1268506 | 120945 | 3.686 MiB | 538 |
+| struct | 10000 | streaming | 7.682 ms | 1301691 | 121153 | 3.691 MiB | 613 |
+| struct | 10000 | stream_first | 1.663 ms | — | 24873 | 775.109 KiB | 2788 |
+| struct | 100000 | materialized | 75.804 ms | 1319187 | 1210295 | 36.843 MiB | 57 |
+| struct | 100000 | streaming | 80.005 ms | 1249929 | 1213009 | 36.917 MiB | 61 |
+| struct | 100000 | stream_first | 1.781 ms | — | 24873 | 775.109 KiB | 2570 |
+| struct | 1000000 | materialized | 896.030 ms | 1116034 | 12104666 | 368.428 MiB | 6 |
+| struct | 1000000 | streaming | 864.974 ms | 1156104 | 12132748 | 369.207 MiB | 6 |
+| struct | 1000000 | stream_first | 1.911 ms | — | 24873 | 775.109 KiB | 2322 |
+| list | 10000 | materialized | 644.369 μs | 15519058 | 30490 | 1.280 MiB | 3861 |
+| list | 10000 | streaming | 599.891 μs | 16669695 | 30606 | 1.281 MiB | 6227 |
+| list | 10000 | stream_first | 280.470 μs | — | 6278 | 269.461 KiB | 10000 |
+| list | 100000 | materialized | 5.675 ms | 17619792 | 304100 | 12.794 MiB | 399 |
+| list | 100000 | streaming | 5.404 ms | 18504159 | 305710 | 12.829 MiB | 686 |
+| list | 100000 | stream_first | 459.305 μs | — | 6278 | 269.461 KiB | 9972 |
+| list | 1000000 | materialized | 56.476 ms | 17706577 | 3040181 | 127.894 MiB | 39 |
+| list | 1000000 | streaming | 61.756 ms | 16192878 | 3056855 | 128.280 MiB | 74 |
+| list | 1000000 | stream_first | 489.722 μs | — | 6278 | 269.461 KiB | 9219 |
 
 ## Results — 64 threads
 
@@ -135,95 +140,95 @@ controls DuckDB's parallelism too.
 
 | profile | scale | path | median | rows/s | allocs | memory | samples |
 |---|---|---|---|---|---|---|---|
-| flat | 10000 | appender | 2.261 ms | 4422884 | 76936 | 1.174 MiB | 1271 |
-| flat | 10000 | register | 7.535 ms | 1327204 | 1499 | 83.969 KiB | 454 |
+| flat | 10000 | appender | 2.394 ms | 4177969 | 76936 | 1.174 MiB | 1192 |
+| flat | 10000 | register | 7.941 ms | 1259339 | 1307 | 80.969 KiB | 451 |
 | flat | 10000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| flat | 10000 | literal | 189.595 ms | 52744 | 163185 | 9.250 MiB | 25 |
-| flat | 100000 | appender | 21.660 ms | 4616742 | 796936 | 12.160 MiB | 211 |
-| flat | 100000 | register | 18.663 ms | 5358074 | 2819 | 117.656 KiB | 223 |
+| flat | 10000 | literal | 206.919 ms | 48328 | 162545 | 9.241 MiB | 24 |
+| flat | 100000 | appender | 22.174 ms | 4509870 | 796936 | 12.160 MiB | 207 |
+| flat | 100000 | register | 19.180 ms | 5213679 | 2627 | 114.656 KiB | 219 |
 | flat | 100000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| flat | 100000 | literal | 2.039 s | 49039 | 1659435 | 92.929 MiB | 3 |
-| flat | 1000000 | appender | 203.457 ms | 4915033 | 7996936 | 122.024 MiB | 24 |
-| flat | 1000000 | register | 111.231 ms | 8990329 | 16023 | 454.594 KiB | 39 |
+| flat | 100000 | literal | 2.123 s | 47103 | 1653035 | 92.831 MiB | 3 |
+| flat | 1000000 | appender | 211.893 ms | 4719367 | 7996936 | 122.024 MiB | 23 |
+| flat | 1000000 | register | 115.862 ms | 8630930 | 15831 | 451.594 KiB | 39 |
 | flat | 1000000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| flat | 1000000 | literal | 20.360 s | 49117 | 16621935 | 929.636 MiB | 1 |
-| rich | 10000 | appender | 12.220 ms | 818322 | 196541 | 6.006 MiB | 342 |
+| flat | 1000000 | literal | 22.982 s | 43512 | 16557935 | 928.660 MiB | 1 |
+| rich | 10000 | appender | 11.954 ms | 836555 | 196541 | 6.006 MiB | 354 |
 | rich | 10000 | register | _skipped_ | — | — | — | UUID column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
 | rich | 10000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| rich | 10000 | literal | 181.157 ms | 55201 | 242790 | 9.968 MiB | 27 |
-| rich | 100000 | appender | 119.268 ms | 838450 | 1988096 | 60.403 MiB | 41 |
+| rich | 10000 | literal | 190.363 ms | 52531 | 242150 | 9.958 MiB | 25 |
+| rich | 100000 | appender | 120.126 ms | 832459 | 1988096 | 60.403 MiB | 42 |
 | rich | 100000 | register | _skipped_ | — | — | — | UUID column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
 | rich | 100000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| rich | 100000 | literal | 2.031 s | 49244 | 2450595 | 100.029 MiB | 3 |
-| rich | 1000000 | appender | 1.500 s | 666699 | 19908576 | 604.570 MiB | 4 |
+| rich | 100000 | literal | 2.173 s | 46023 | 2444195 | 99.932 MiB | 3 |
+| rich | 1000000 | appender | 1.472 s | 679164 | 19908576 | 604.570 MiB | 4 |
 | rich | 1000000 | register | _skipped_ | — | — | — | UUID column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
 | rich | 1000000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| rich | 1000000 | literal | 21.472 s | 46573 | 24533575 | 1000.746 MiB | 1 |
+| rich | 1000000 | literal | 21.772 s | 45930 | 24469575 | 999.769 MiB | 1 |
 | struct | 10000 | appender | _skipped_ | — | — | — | no NamedTuple method — appender.jl:116-119 throws NotImplementedException |
 | struct | 10000 | register | _skipped_ | — | — | — | NamedTuple column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
-| struct | 10000 | register_flat | 5.709 ms | 1751751 | 1404 | 237.094 KiB | 564 |
-| struct | 10000 | literal | 132.651 ms | 75386 | 224251 | 17.702 MiB | 36 |
+| struct | 10000 | register_flat | 6.897 ms | 1449966 | 1212 | 234.094 KiB | 490 |
+| struct | 10000 | literal | 152.180 ms | 65712 | 223611 | 17.693 MiB | 32 |
 | struct | 100000 | appender | _skipped_ | — | — | — | no NamedTuple method — appender.jl:116-119 throws NotImplementedException |
 | struct | 100000 | register | _skipped_ | — | — | — | NamedTuple column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
-| struct | 100000 | register_flat | 13.018 ms | 7681794 | 2284 | 1.627 MiB | 307 |
-| struct | 100000 | literal | 1.403 s | 71280 | 2242501 | 176.987 MiB | 4 |
+| struct | 100000 | register_flat | 14.618 ms | 6840785 | 2092 | 1.624 MiB | 283 |
+| struct | 100000 | literal | 1.461 s | 68466 | 2236101 | 176.890 MiB | 4 |
 | struct | 1000000 | appender | _skipped_ | — | — | — | no NamedTuple method — appender.jl:116-119 throws NotImplementedException |
 | struct | 1000000 | register | _skipped_ | — | — | — | NamedTuple column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
-| struct | 1000000 | register_flat | 58.752 ms | 17020726 | 11088 | 15.582 MiB | 72 |
-| struct | 1000000 | literal | 15.858 s | 63058 | 22425001 | 1.729 GiB | 1 |
+| struct | 1000000 | register_flat | 59.085 ms | 16924863 | 10896 | 15.579 MiB | 73 |
+| struct | 1000000 | literal | 15.288 s | 65410 | 22361001 | 1.728 GiB | 1 |
 | list | 10000 | appender | _skipped_ | — | — | — | SEGFAULTS at ~1M appends — see verify_list_appender_gc.jl / findings.md §5 |
 | list | 10000 | register | _skipped_ | — | — | — | Vector column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
 | list | 10000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| list | 10000 | literal | 122.384 ms | 81710 | 183511 | 6.415 MiB | 39 |
+| list | 10000 | literal | 133.107 ms | 75127 | 182871 | 6.405 MiB | 35 |
 | list | 100000 | appender | _skipped_ | — | — | — | SEGFAULTS at ~1M appends — see verify_list_appender_gc.jl / findings.md §5 |
 | list | 100000 | register | _skipped_ | — | — | — | Vector column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
 | list | 100000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| list | 100000 | literal | 1.301 s | 76875 | 1842261 | 64.413 MiB | 4 |
+| list | 100000 | literal | 1.431 s | 69867 | 1835861 | 64.315 MiB | 4 |
 | list | 1000000 | appender | _skipped_ | — | — | — | SEGFAULTS at ~1M appends — see verify_list_appender_gc.jl / findings.md §5 |
 | list | 1000000 | register | _skipped_ | — | — | — | Vector column rejected by create_logical_type — logical_type.jl:64-66 (findings.md §4) |
 | list | 1000000 | register_flat | _skipped_ | — | — | — | not applicable — profile has no struct column to decompose |
-| list | 1000000 | literal | 14.578 s | 68597 | 18426089 | 644.283 MiB | 1 |
+| list | 1000000 | literal | 15.175 s | 65898 | 18362089 | 643.306 MiB | 1 |
 
 ### Reads
 
 | profile | scale | path | median | rows/s | allocs | memory | samples |
 |---|---|---|---|---|---|---|---|
-| flat | 10000 | materialized | 991.340 μs | 10087357 | 10658 | 627.961 KiB | 2380 |
-| flat | 10000 | streaming | 949.547 μs | 10531343 | 10842 | 631.625 KiB | 2676 |
-| flat | 10000 | stream_first | 973.132 μs | — | 2551 | 149.523 KiB | 2269 |
-| flat | 100000 | materialized | 4.250 ms | 23528484 | 102024 | 5.883 MiB | 692 |
-| flat | 100000 | streaming | 3.905 ms | 25607286 | 104494 | 5.939 MiB | 828 |
-| flat | 100000 | stream_first | 1.891 ms | — | 2551 | 149.523 KiB | 1412 |
-| flat | 1000000 | materialized | 34.135 ms | 29295455 | 1015661 | 58.566 MiB | 79 |
-| flat | 1000000 | streaming | 43.801 ms | 22830419 | 1041009 | 59.166 MiB | 113 |
-| flat | 1000000 | stream_first | 1.484 ms | — | 2551 | 149.523 KiB | 1736 |
-| rich | 10000 | materialized | 1.999 ms | 5001911 | 30615 | 1007.875 KiB | 1659 |
-| rich | 10000 | streaming | 1.938 ms | 5158646 | 30757 | 1010.516 KiB | 1807 |
-| rich | 10000 | stream_first | 929.871 μs | — | 6625 | 227.078 KiB | 2900 |
-| rich | 100000 | materialized | 15.042 ms | 6647854 | 301761 | 9.596 MiB | 263 |
-| rich | 100000 | streaming | 14.957 ms | 6685628 | 303705 | 9.642 MiB | 301 |
-| rich | 100000 | stream_first | 1.096 ms | — | 6625 | 227.078 KiB | 1934 |
-| rich | 1000000 | materialized | 176.100 ms | 5678596 | 3013215 | 95.707 MiB | 28 |
-| rich | 1000000 | streaming | 165.562 ms | 6040031 | 3033238 | 96.199 MiB | 31 |
-| rich | 1000000 | stream_first | 1.209 ms | — | 6625 | 227.078 KiB | 2356 |
-| struct | 10000 | materialized | 8.688 ms | 1150957 | 121335 | 3.710 MiB | 503 |
-| struct | 10000 | streaming | 8.727 ms | 1145868 | 121543 | 3.715 MiB | 522 |
-| struct | 10000 | stream_first | 2.382 ms | — | 25263 | 799.750 KiB | 1728 |
-| struct | 100000 | materialized | 77.788 ms | 1285550 | 1210685 | 36.868 MiB | 58 |
-| struct | 100000 | streaming | 82.910 ms | 1206122 | 1213399 | 36.941 MiB | 61 |
-| struct | 100000 | stream_first | 2.585 ms | — | 25263 | 799.750 KiB | 1403 |
-| struct | 1000000 | materialized | 921.302 ms | 1085420 | 12105056 | 368.450 MiB | 6 |
-| struct | 1000000 | streaming | 901.034 ms | 1109836 | 12133216 | 369.235 MiB | 6 |
-| struct | 1000000 | stream_first | 3.022 ms | — | 25263 | 799.750 KiB | 1278 |
-| list | 10000 | materialized | 1.167 ms | 8568767 | 30880 | 1.304 MiB | 2435 |
-| list | 10000 | streaming | 1.186 ms | 8429081 | 30996 | 1.306 MiB | 2650 |
-| list | 10000 | stream_first | 845.076 μs | — | 6668 | 294.102 KiB | 3047 |
-| list | 100000 | materialized | 7.137 ms | 14012424 | 304490 | 12.818 MiB | 417 |
-| list | 100000 | streaming | 7.872 ms | 12703467 | 306100 | 12.853 MiB | 510 |
-| list | 100000 | stream_first | 1.054 ms | — | 6668 | 294.102 KiB | 2094 |
-| list | 1000000 | materialized | 60.237 ms | 16601149 | 3040572 | 127.917 MiB | 49 |
-| list | 1000000 | streaming | 77.513 ms | 12901131 | 3057140 | 128.300 MiB | 64 |
-| list | 1000000 | stream_first | 1.242 ms | — | 6668 | 294.102 KiB | 2001 |
+| flat | 10000 | materialized | 1.020 ms | 9804941 | 10594 | 626.961 KiB | 2463 |
+| flat | 10000 | streaming | 997.064 μs | 10029441 | 10778 | 630.625 KiB | 2560 |
+| flat | 10000 | stream_first | 1.154 ms | — | 2487 | 148.523 KiB | 2094 |
+| flat | 100000 | materialized | 4.977 ms | 20092706 | 101960 | 5.882 MiB | 624 |
+| flat | 100000 | streaming | 4.192 ms | 23856550 | 104430 | 5.937 MiB | 848 |
+| flat | 100000 | stream_first | 1.575 ms | — | 2487 | 148.523 KiB | 1715 |
+| flat | 1000000 | materialized | 35.566 ms | 28116893 | 1015597 | 58.565 MiB | 78 |
+| flat | 1000000 | streaming | 45.197 ms | 22125256 | 1040945 | 59.163 MiB | 108 |
+| flat | 1000000 | stream_first | 2.074 ms | — | 2487 | 148.523 KiB | 1562 |
+| rich | 10000 | materialized | 2.077 ms | 4815736 | 30551 | 1006.875 KiB | 1615 |
+| rich | 10000 | streaming | 2.168 ms | 4612597 | 30693 | 1009.516 KiB | 1569 |
+| rich | 10000 | stream_first | 1.107 ms | — | 6561 | 226.078 KiB | 2445 |
+| rich | 100000 | materialized | 15.446 ms | 6473972 | 301697 | 9.595 MiB | 258 |
+| rich | 100000 | streaming | 14.911 ms | 6706370 | 303641 | 9.640 MiB | 308 |
+| rich | 100000 | stream_first | 1.160 ms | — | 6561 | 226.078 KiB | 1997 |
+| rich | 1000000 | materialized | 169.760 ms | 5890685 | 3013173 | 95.706 MiB | 28 |
+| rich | 1000000 | streaming | 151.066 ms | 6619616 | 3033231 | 96.199 MiB | 34 |
+| rich | 1000000 | stream_first | 1.762 ms | — | 6561 | 226.078 KiB | 1613 |
+| struct | 10000 | materialized | 9.265 ms | 1079348 | 121271 | 3.709 MiB | 466 |
+| struct | 10000 | streaming | 9.120 ms | 1096474 | 121479 | 3.714 MiB | 495 |
+| struct | 10000 | stream_first | 2.511 ms | — | 25199 | 798.750 KiB | 1561 |
+| struct | 100000 | materialized | 80.762 ms | 1238207 | 1210621 | 36.866 MiB | 56 |
+| struct | 100000 | streaming | 84.908 ms | 1177747 | 1213335 | 36.941 MiB | 60 |
+| struct | 100000 | stream_first | 2.954 ms | — | 25199 | 798.750 KiB | 1146 |
+| struct | 1000000 | materialized | 926.069 ms | 1079833 | 12104992 | 368.446 MiB | 6 |
+| struct | 1000000 | streaming | 893.046 ms | 1119764 | 12133168 | 369.231 MiB | 6 |
+| struct | 1000000 | stream_first | 3.149 ms | — | 25199 | 798.750 KiB | 1279 |
+| list | 10000 | materialized | 1.335 ms | 7489582 | 30816 | 1.303 MiB | 2119 |
+| list | 10000 | streaming | 1.310 ms | 7634695 | 30932 | 1.305 MiB | 2375 |
+| list | 10000 | stream_first | 1.038 ms | — | 6604 | 293.102 KiB | 2435 |
+| list | 100000 | materialized | 7.794 ms | 12830188 | 304426 | 12.817 MiB | 392 |
+| list | 100000 | streaming | 8.704 ms | 11488352 | 306036 | 12.852 MiB | 490 |
+| list | 100000 | stream_first | 1.567 ms | — | 6604 | 293.102 KiB | 1668 |
+| list | 1000000 | materialized | 58.356 ms | 17136143 | 3040584 | 127.920 MiB | 50 |
+| list | 1000000 | streaming | 72.580 ms | 13777828 | 3057181 | 128.302 MiB | 68 |
+| list | 1000000 | stream_first | 1.470 ms | — | 6604 | 293.102 KiB | 1799 |
 
 ## Path ordering stability
 
@@ -253,9 +258,9 @@ absolute times — is what this session promises.
 | 1 | read | rich | 1000000 | stream_first < streaming < materialized | yes |
 | 1 | read | struct | 10000 | stream_first < streaming < materialized | yes |
 | 1 | read | struct | 100000 | stream_first < materialized < streaming | yes |
-| 1 | read | struct | 1000000 | stream_first < materialized < streaming | **NO** — also saw stream_first < streaming < materialized |
+| 1 | read | struct | 1000000 | stream_first < streaming < materialized | yes |
 | 1 | read | list | 10000 | stream_first < streaming < materialized | yes |
-| 1 | read | list | 100000 | stream_first < materialized < streaming | yes |
+| 1 | read | list | 100000 | stream_first < streaming < materialized | yes |
 | 1 | read | list | 1000000 | stream_first < materialized < streaming | yes |
 | 64 | write | flat | 10000 | appender < register < literal | yes |
 | 64 | write | flat | 100000 | register < appender < literal | yes |
@@ -269,17 +274,17 @@ absolute times — is what this session promises.
 | 64 | write | list | 10000 | literal | yes |
 | 64 | write | list | 100000 | literal | yes |
 | 64 | write | list | 1000000 | literal | yes |
-| 64 | read | flat | 10000 | streaming < stream_first < materialized | **NO** — also saw stream_first < streaming < materialized |
+| 64 | read | flat | 10000 | streaming < materialized < stream_first | **NO** — also saw streaming < stream_first < materialized |
 | 64 | read | flat | 100000 | stream_first < streaming < materialized | yes |
 | 64 | read | flat | 1000000 | stream_first < materialized < streaming | yes |
-| 64 | read | rich | 10000 | stream_first < streaming < materialized | yes |
+| 64 | read | rich | 10000 | stream_first < materialized < streaming | **NO** — also saw stream_first < streaming < materialized |
 | 64 | read | rich | 100000 | stream_first < streaming < materialized | yes |
 | 64 | read | rich | 1000000 | stream_first < streaming < materialized | yes |
-| 64 | read | struct | 10000 | stream_first < materialized < streaming | yes |
+| 64 | read | struct | 10000 | stream_first < streaming < materialized | yes |
 | 64 | read | struct | 100000 | stream_first < materialized < streaming | yes |
-| 64 | read | struct | 1000000 | stream_first < streaming < materialized | yes |
-| 64 | read | list | 10000 | stream_first < materialized < streaming | yes |
+| 64 | read | struct | 1000000 | stream_first < streaming < materialized | **NO** — also saw stream_first < materialized < streaming |
+| 64 | read | list | 10000 | stream_first < streaming < materialized | **NO** — also saw stream_first < materialized < streaming |
 | 64 | read | list | 100000 | stream_first < materialized < streaming | yes |
 | 64 | read | list | 1000000 | stream_first < materialized < streaming | yes |
 
-**2 ordering(s) did not reproduce** — treat those cells as too close to call.
+**4 ordering(s) did not reproduce** — treat those cells as too close to call.

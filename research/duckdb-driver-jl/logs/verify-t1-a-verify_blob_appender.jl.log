@@ -1,0 +1,39 @@
+DuckDB.jl blob-appender verification
+driver source: /home/pjc/.julia/packages/DuckDB/2J7sd/src
+
+== probe 1: julia method dispatch for Vector{UInt8}
+  dispatched method                            : append(appender::DuckDB.Appender, val::Vector{UInt8}) @ DuckDB ~/.julia/packages/DuckDB/2J7sd/src/appender.jl:94
+  blob path (appender.jl:94) selected?         : YES
+
+== probe 2: DuckDB.append(appender, ::Vector{UInt8}) into a BLOB column
+  append() threw?                              : YES
+    error                                      : cannot convert a value to nothing for assignment
+  duckdb_appender_error()                      : (none)
+  rows landed in table                         : 0
+
+== probe 3: raw C API with Ptr{Cvoid} (bypassing the api.jl wrapper)
+  raw duckdb_append_blob state                 : DuckDBSuccess (0)
+  duckdb_appender_error()                      : (none)
+  rows landed via raw ccall                    : 1
+  bytes round-trip exactly?                    : YES
+
+== probe 4: workarounds for blob writes
+  4a. append(::String) into BLOB [ASCII]       : 
+      after append                             : no throw
+      after end_row                            : no throw
+      after flush                              : no throw
+      rows landed                              : 1
+      bytes round-trip exactly?                : YES
+  4a. append(::String) into BLOB [non-UTF8]    : 
+      after append                             : no throw  |  C error: Invalid unicode (byte sequence mismatch) detected in value construction
+      after end_row                            : no throw  |  C error: Call to EndRow before all columns have been appended to!
+      after flush                              : no throw  |  C error: Call to EndRow before all columns have been appended to!
+      rows landed                              : 0
+  4a. append(::String) into BLOB [with NUL]    : 
+      after append                             : THREW: ArgumentError: embedded NULs are not allowed in C strings: "\xaa\0'\xff"
+      rows landed                              : 0
+  4b. prepared bind of Vector{UInt8} threw?    : no
+      rows landed                              : 1
+      bytes round-trip exactly?                : YES
+
+done.

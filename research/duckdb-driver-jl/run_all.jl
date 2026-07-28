@@ -68,16 +68,37 @@ end
 const VERIFY_SCRIPTS = ["verify_blob_appender.jl", "verify_enum_appender.jl",
                         "verify_appender_transaction.jl", "verify_structarray_register.jl"]
 
-function run_verifications()
+# these scripts are observational PROBES, not pass/fail tests. several of them
+# deliberately record broken driver behaviour (a misaligned appender batch, a
+# rollback leak) — that observation is the point, so "the script found something
+# bad" is not a failure condition. the only real failure is the process dying.
+#
+# two bugs were fixed here:
+#   - `ok = p.exitcode == 0` called a signal-killed run a pass. julia reports
+#     exitcode 0 with termsignal set when a child dies on a signal, and Base's
+#     own predicate is `proc.exitcode == 0 && proc.termsignal == 0`
+#     (base/process.jl). a segfault is a live failure mode for these scripts
+#     (§5.1.4), so this mattered. `success(p)` checks both.
+#   - output went to devnull, which destroyed the probes' findings — the very
+#     thing they exist to produce. it is captured to logs/ now.
+function run_verifications(tag)
   out = Dict{String, Any}()
+  logdir = joinpath(@__DIR__, "logs")
+  mkpath(logdir)
   for s in VERIFY_SCRIPTS
     print(rpad("  verify $s", 46))
-    p = run(pipeline(`$(Base.julia_cmd()) --project=$(@__DIR__) $(joinpath(@__DIR__, s))`,
-                     stdout = devnull, stderr = devnull), wait = false)
-    wait(p)
-    ok = p.exitcode == 0
-    out[s] = Dict("exit_code" => p.exitcode, "ok" => ok)
-    println(ok ? "ok" : "FAILED (exit $(p.exitcode))")
+    logfile = joinpath(logdir, "verify-$(tag)-$(s).log")
+    p = open(logfile, "w") do io
+      proc = run(pipeline(`$(Base.julia_cmd()) --project=$(@__DIR__) $(joinpath(@__DIR__, s))`,
+                          stdout = io, stderr = io), wait = false)
+      wait(proc)
+      proc
+    end
+    ran = success(p)
+    out[s] = Dict("exit_code" => p.exitcode, "termsignal" => p.termsignal,
+                  "ok" => ran, "log" => relpath(logfile, @__DIR__))
+    println(ran ? "ran" :
+            "CRASHED (exit $(p.exitcode), signal $(p.termsignal)) — see $(relpath(logfile, @__DIR__))")
   end
   return out
 end
@@ -92,13 +113,24 @@ function do_run(tag; scales = SCALES)
           ", DuckDB.jl ", env["duckdb_jl"], ", threads=", env["threads"], " ===\n")
 
   println("verifications:")
-  verifs = run_verifications()
+  verifs = run_verifications(tag)
 
   con = DBInterface.connect(DuckDB.DB)
   println("\nwrite benchmarks:")
   writes = bench_writes(con; scales = scales)
+
+  # reads get a FRESH database. the write sweep leaves its tables resident —
+  # recreate_table! is CREATE OR REPLACE (bench_common.jl:171), nothing drops
+  # anything, and the table names carry no scale (bench_write.jl:35), so after
+  # the sweep every w_* table holds its largest scale. reads run last, so on the
+  # shared connection even the 10k read cells were measured against gigabytes of
+  # leftover write data. reads build their own r_* fixtures (bench_read.jl:25-36)
+  # and never touch the write tables, so a clean database is the honest baseline.
+  DBInterface.close!(con)
+  con = DBInterface.connect(DuckDB.DB)
   println("\nread benchmarks:")
   reads = bench_reads(con; scales = scales)
+  DBInterface.close!(con)
 
   path = joinpath(RAW_DIR, "results-$(tag).json")
   open(path, "w") do io
@@ -147,6 +179,26 @@ function do_merge()
   println(io, "**ordering**, which is stable across runs; absolute times are indicative and")
   println(io, "machine-specific (goal.md constraints).\n")
 
+  # the environment table describes ALL runs, so drift between them must not be
+  # silently papered over by reporting run 1's values. same for verifications
+  # below: a failure in run 3 was previously invisible
+  for r in runs[2:end]
+    for (k, v) in first(runs)["environment"]
+      k == "threads" && continue      # the sweep varies this deliberately
+      # haskey first: a raw file written before a field was added to
+      # environment() would otherwise raise a bare KeyError instead of the
+      # drift message this block exists to produce
+      if !haskey(r["environment"], k)
+        error("environment drift between runs $(first(runs)["tag"]) and " *
+              "$(r["tag"]): $k is missing entirely — raw files from different " *
+              "harness versions cannot be merged")
+      end
+      r["environment"][k] == v || error(
+        "environment drift between runs $(first(runs)["tag"]) and $(r["tag"]): " *
+        "$k is $(repr(v)) vs $(repr(r["environment"][k]))")
+    end
+  end
+
   e = first(runs)["environment"]
   println(io, "## Environment\n")
   println(io, "| Field | Value |")
@@ -165,13 +217,63 @@ function do_merge()
 
   # verification status
   println(io, "## Verification scripts\n")
-  for (name, v) in sort(collect(first(runs)["verifications"]), by = first)
-    println(io, "- `", name, "` — ", v["ok"] ? "pass" : "FAIL (exit $(v["exit_code"]))")
+  println(io, "These are observational probes, not pass/fail tests — several deliberately")
+  println(io, "record broken driver behaviour. \"ran\" means the process completed without")
+  println(io, "crashing; it does **not** mean the behaviour it probed was correct. Findings")
+  println(io, "are in `logs/`. Reported across all $(length(runs)) runs.\n")
+  # union across runs, not just the first: keying off run 1 would silently drop
+  # a probe that only later runs executed, while going to the trouble of
+  # printing "absent" for the reverse case
+  allprobes = sort(collect(union([Set(keys(r["verifications"])) for r in runs]...)))
+  for name in allprobes
+    outcomes = String[]
+    for r in runs
+      v = get(r["verifications"], name, nothing)
+      if v === nothing
+        push!(outcomes, "$(r["tag"]): absent")
+      elseif v["ok"]
+        push!(outcomes, "$(r["tag"]): ran")
+      else
+        push!(outcomes, "$(r["tag"]): **CRASHED** (exit $(v["exit_code"]), " *
+                        "signal $(get(v, "termsignal", "?")))")
+      end
+    end
+    println(io, "- `", name, "` — ", join(outcomes, " · "))
   end
   println(io, "\n`verify_list_appender_gc.jl` is excluded from automated runs: its")
   println(io, "`natural` mode segfaults by design (findings.md §5).\n")
 
   # per thread-config result tables
+  # a raw file left over from an older harness is the real hazard here, and it
+  # is INVISIBLE: if its cells match the current PROFILES/SCALES they merge
+  # silently and get compared for stability against runs measured differently.
+  # nothing in the JSON records which harness produced it, so the best available
+  # signal is the spread of file mtimes — a raw/ whose files were not written by
+  # the same sweep deserves a look.
+  #
+  # (an earlier version of this warning claimed out-of-range cells "still feed
+  # the stability table". that was wrong: the render loop and the stability loop
+  # filter identically on PROFILES/SCALES, so such a cell feeds neither. it is
+  # still worth reporting as a sign of a stale file, but it corrupts nothing.)
+  known_profiles = Set(p.name for p in PROFILES)
+  for r in runs
+    for c in r["cells"]
+      if !(c["profile"] in known_profiles) || !(c["scale"] in SCALES)
+        @warn "raw cell outside the current PROFILES/SCALES — not rendered and not " *
+              "compared, but a sign of a stale run in raw/: tag=$(r["tag"]) " *
+              "profile=$(c["profile"]) scale=$(c["scale"]) path=$(c["path"])"
+      end
+    end
+  end
+
+  mtimes = [mtime(f) for f in files]
+  spread = maximum(mtimes) - minimum(mtimes)
+  if spread > 6 * 3600
+    @warn "raw/*.json span $(round(spread / 3600, digits = 1)) hours — are these " *
+          "all from the same sweep? a file from an older harness merges silently " *
+          "and is compared for stability against the others"
+  end
+
   for nthreads in sort(collect(keys(bythreads)))
     group = bythreads[nthreads]
     cells = vcat([r["cells"] for r in group]...)
@@ -209,6 +311,7 @@ function do_merge()
   println(io, "agree between repeat runs at the same thread count; that agreement — not the")
   println(io, "absolute times — is what this session promises.\n")
   unstable = 0
+  unchecked = 0
   println(io, "| threads | kind | profile | scale | ordering (fastest first) | stable |")
   println(io, "|---|---|---|---|---|---|")
   for nthreads in sort(collect(keys(bythreads)))
@@ -217,23 +320,42 @@ function do_merge()
       ords = [ordering(r["cells"], kind, prof, scale) for r in group]
       filter!(!isempty, ords)
       isempty(ords) && continue
-      stable = all(o -> o == ords[1], ords)
-      stable || (unstable += 1)
+      # a single ordering compares equal to itself, so `all` is vacuously true
+      # when a thread group holds one run — or when a cell was skipped in one
+      # repeat and the empty ordering was filtered out above. reporting that as
+      # "yes" claims a reproduction that never happened, in the one column this
+      # document calls its deliverable
+      if length(ords) < 2
+        unchecked += 1
+        verdict = "**not checked** — only $(length(ords)) run reported this cell"
+      else
+        stable = all(o -> o == ords[1], ords)
+        stable || (unstable += 1)
+        verdict = stable ? "yes" :
+                  "**NO** — also saw " *
+                  join([join(o, " < ") for o in ords[2:end]], " / ")
+      end
       println(io, "| ", nthreads, " | ", kind, " | ", prof, " | ", scale, " | ",
-              join(ords[1], " < "), " | ", stable ? "yes" :
-              "**NO** — also saw " * join([join(o, " < ") for o in ords[2:end]], " / "), " |")
+              join(ords[1], " < "), " | ", verdict, " |")
     end
   end
-  println(io, "\n", unstable == 0 ?
-          "All orderings reproduced across repeat runs." :
-          "**$unstable ordering(s) did not reproduce** — treat those cells as too close to call.")
+  # the headline must not read as a clean bill of health when cells went
+  # unchecked — that is how a one-run sweep used to print "all reproduced"
+  headline = unstable == 0 ? "All compared orderings reproduced across repeat runs." :
+             "**$unstable ordering(s) did not reproduce** — treat those cells as too close to call."
+  if unchecked > 0
+    headline *= "\n\n**$unchecked cell(s) were NOT checked for stability** — fewer than " *
+                "two runs reported them, so no reproduction was tested."
+  end
+  println(io, "\n", headline)
 
   write(joinpath(@__DIR__, "results.md"), String(take!(io)))
   open(joinpath(@__DIR__, "results.json"), "w") do f
     JSON.print(f, Dict("runs" => runs), 2)
   end
-  println("wrote results.md and results.json (", unstable, " unstable ordering(s))")
-  return unstable
+  println("wrote results.md and results.json (", unstable, " unstable ordering(s), ",
+          unchecked, " unchecked)")
+  return (unstable = unstable, unchecked = unchecked)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
@@ -244,7 +366,14 @@ if abspath(PROGRAM_FILE) == @__FILE__
     scales = length(ARGS) >= 3 ? parse.(Int, ARGS[3:end]) : SCALES
     do_run(tag; scales = scales)
   elseif mode == "merge"
-    do_merge()
+    # a cell nobody checked for stability is not a pass. exiting 0 regardless of
+    # `unchecked` is the same silent-success shape as the run_sweep.sh `wait`
+    # bug: set -euo pipefail can only catch what reports failure
+    r = do_merge()
+    if r.unchecked > 0
+      error("$(r.unchecked) cell(s) had fewer than two runs and were never " *
+            "checked for ordering stability — the sweep is incomplete")
+    end
   else
     error("usage: run_all.jl run <tag> | run_all.jl merge")
   end

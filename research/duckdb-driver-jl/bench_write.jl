@@ -85,6 +85,12 @@ function bench_writes(con; scales = SCALES, profiles = [p.name for p in PROFILES
                   status = "ok", median_ns = r.median_ns, min_ns = r.min_ns,
                   samples = r.samples, allocs = r.allocs,
                   memory_bytes = r.memory_bytes, rows_per_sec = r.rows_per_sec))
+      # drop the cell's table before the next one. recreate_table! is CREATE OR
+      # REPLACE and never dropped anything, so the later cells of a scale ran
+      # with every earlier cell's table still resident — by list/literal at 1M
+      # that was a dozen-odd tables of a million rows each. cells within a sweep
+      # have to be measured under the same conditions to be comparable
+      DBInterface.execute(con, "DROP TABLE IF EXISTS w_$(pname)_$(path)")
     end
     # drop this scale's data before building the next — four profiles at 1M
     # rows held simultaneously is a few hundred MB

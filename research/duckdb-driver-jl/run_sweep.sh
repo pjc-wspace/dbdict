@@ -27,8 +27,13 @@ julia --project=. -t 1 run_all.jl run t1-a > sweep-t1-a.log 2>&1 &
 pid_a=$!
 julia --project=. -t 1 run_all.jl run t1-b > sweep-t1-b.log 2>&1 &
 pid_b=$!
-wait $pid_a && echo "  t1-a done"
-wait $pid_b && echo "  t1-b done"
+# NOT `wait $pid && echo ...`: set -e ignores a failing non-final command of an
+# AND-OR list, so a died run was swallowed and the sweep carried on to merge an
+# incomplete raw/ set — which then triggered a vacuously "stable" ordering table
+wait $pid_a
+echo "  t1-a done"
+wait $pid_b
+echo "  t1-b done"
 
 # serial: each of these wants the whole machine
 for rep in a b; do

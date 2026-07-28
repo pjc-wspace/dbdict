@@ -35,27 +35,73 @@ function populate!(con, pname, n)
   return tbl
 end
 
-read_materialized(con, sql) = DataFrame(DBInterface.execute(con, sql))
+# ALL THREE modes close their QueryResult, and that symmetry is the point.
+#
+# an earlier revision closed only read_first_chunk, which was worse than closing
+# none of them: the three modes are ranked against each other, so a bias they
+# all share largely cancels, while a bias only one of them carries does not.
+# stream_first was paying a deterministic duckdb_destroy_result inside its timed
+# region while materialized and streaming still leaked to finalizers whose GC
+# landed in whichever window ran next. that is an asymmetry manufactured by a
+# half-fix, and the ordering is the deliverable.
+#
+# verified empirically that closing after consuming is safe: a DataFrame built
+# from a QueryResult, a fully-consumed stream, and a first chunk all keep
+# correct values after close! plus two forced GCs, because the chunk converter
+# allocates owned julia arrays rather than viewing duckdb memory.
+function read_materialized(con, sql)
+  q = DBInterface.execute(con, sql)
+  try
+    return DataFrame(q)
+  finally
+    DBInterface.close!(q)
+  end
+end
 
-# consume every partition. `count` forces the iteration — without consuming,
-# a streaming benchmark would time the query's setup and nothing else
+# consume every partition — without consuming, a streaming benchmark would time
+# the query's setup and nothing else
 function read_streaming(con, sql)
   q = DBInterface.execute(con, sql, DuckDB.StreamResult)
-  rows = 0
-  for chunk in Tables.partitions(q)
-    # a chunk is a column table (NamedTuple of vectors, result.jl:771-796);
-    # Tables.rows(chunk) has no length method, so count via the first column
-    cols = Tables.columns(chunk)
-    rows += length(first(cols))
+  try
+    rows = 0
+    for chunk in Tables.partitions(q)
+      # a chunk is a column table (NamedTuple of vectors, result.jl:771-796);
+      # Tables.rows(chunk) has no length method, so count via the first column
+      cols = Tables.columns(chunk)
+      rows += length(first(cols))
+    end
+    return rows
+  finally
+    DBInterface.close!(q)
   end
-  return rows
 end
 
 # first chunk only — results are strictly single-pass (result.jl:800-807), so
-# this deliberately abandons the rest of the result
+# the rest of the result is deliberately not consumed.
+#
+# the close is NOT optional. an earlier version returned the first chunk and
+# let the QueryResult fall to its finalizer; BenchmarkTools then ran thousands
+# of samples per cell (up to its 10,000 cap), so thousands of un-finalized
+# duckdb result handles piled up and their eventual GC landed inside later
+# samples' timing windows. that turned "time to first chunk" partly into a
+# measure of finalizer backlog.
+#
+# closing here puts a bounded, deterministic duckdb_destroy_result inside the
+# timed region, which slightly overstates first-chunk latency. that is the
+# right trade: a small known overhead beats an unbounded deferred one. the
+# alternative — closing in BenchmarkTools' `teardown`, outside the timing —
+# does not work without reaching into its internal `__return_val` binding,
+# because the core expression is compiled as its own @noinline function
+# (BenchmarkTools execution.jl:646-666) and its locals are not in teardown's
+# scope. StreamResult is only a type tag (DuckDB.jl:16); execute returns a
+# QueryResult, which is what close! accepts (result.jl:766).
 function read_first_chunk(con, sql)
   q = DBInterface.execute(con, sql, DuckDB.StreamResult)
-  return first(Tables.partitions(q))
+  try
+    return first(Tables.partitions(q))
+  finally
+    DBInterface.close!(q)
+  end
 end
 
 function bench_read_cell(con, mode, sql)
@@ -92,6 +138,12 @@ function bench_reads(con; scales = SCALES, profiles = [p.name for p in PROFILES]
                     samples = r.samples, allocs = r.allocs,
                     memory_bytes = r.memory_bytes, rows_per_sec = rps))
       end
+      # drop this profile's fixture before building the next. without it the
+      # loop accumulates: at the 1M scale, reading r_list ran with r_flat,
+      # r_rich and r_struct all still holding 1M rows. that is the same
+      # leftover-data confound the write->read boundary was fixed for, one
+      # level down, and it made the four profiles' cells non-comparable
+      DBInterface.execute(con, "DROP TABLE IF EXISTS $tbl")
     end
     free_data!()
   end

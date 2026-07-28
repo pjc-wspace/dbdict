@@ -2,3 +2,9 @@
 # record is raw/results-*.json (committed). kept out so reruns don't churn diffs
 sweep.log
 sweep-t1-*.log
+
+# logs/ is deliberately NOT ignored. run_all.jl captures the verify probes'
+# output there because sending it to devnull destroyed the findings those
+# probes exist to produce; every raw/results-*.json records a `log` path into
+# it and results.md points readers at it. ignoring the directory would leave
+# those references dangling for anyone who clones. ~40 KB total.

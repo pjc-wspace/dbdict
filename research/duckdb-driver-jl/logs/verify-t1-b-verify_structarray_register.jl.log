@@ -1,0 +1,43 @@
+DuckDB.jl StructArray / register_table verification
+driver source: /home/pjc/.julia/packages/DuckDB/2J7sd/src
+
+== 1. flat StructArray of primitives
+  is it a Tables.jl table?                       : true
+
+  case: StructArray(id::Int32, name::String, score::Float64)
+    register_table                               : ok
+    SELECT from the view                         : ok, 3 rows
+  INSERT INTO ... SELECT threw?                  : no
+  rows written                                   : 3
+
+== 2. does columntable alias the StructArray's component arrays?
+  component :id aliased (===)?                   : true
+  component :name aliased (===)?                 : true
+  component :score aliased (===)?                : true
+  VERDICT                                        : zero-copy — registration hands over the existing arrays
+
+== 3. StructArray with a nested struct field
+  eltype of the nested column                    : @NamedTuple{x::Float64, y::Float64}
+
+  case: StructArray(id::Int32, loc::StructArray(x,y))
+    register_table                               : THREW: Binder Error: Unsupported type for create_logical_type
+
+== 3b. workaround — register leaf fields, reassemble in SQL
+  leaf view registered + queried                 : ok, 2 rows
+  SQL struct reassembly threw?                   : no
+  rows written                                   : 2
+  first row loc                                  : (x = 1.0, y = 3.0)
+
+== 4. field types at the coverage boundary
+
+  case: nullable field Union{Missing,Int32}
+    register_table                               : ok
+    SELECT from the view                         : ok, 2 rows
+
+  case: UUID field
+    register_table                               : THREW: Binder Error: Unsupported type for create_logical_type
+
+  case: list field Vector{Int32}
+    register_table                               : THREW: Binder Error: Unsupported type for create_logical_type
+
+done.
