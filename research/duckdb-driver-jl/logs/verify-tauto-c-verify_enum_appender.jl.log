@@ -1,0 +1,68 @@
+DuckDB.jl appender ENUM / stringify-cast verification
+driver source: /home/pjc/.julia/packages/DuckDB/2J7sd/src
+
+== 1. appending strings into an ENUM column
+
+  case: valid enum label "happy"
+    julia exception : none
+    C errors        : none
+    rows landed     : 1
+    read back       : "happy"  ::String
+    matches expected: YES
+
+  case: invalid enum label "banana"
+    julia exception : none
+    C errors        : append → Failed to cast value: Could not convert string 'banana' to UINT8 | end_row → Call to EndRow before all columns have been appended to!
+    rows landed     : 0
+    >> SILENT DATA LOSS: no julia exception, row did not land
+
+  case: wrong-case label "Happy"
+    julia exception : none
+    C errors        : append → Failed to cast value: Could not convert string 'Happy' to UINT8 | end_row → Call to EndRow before all columns have been appended to!
+    rows landed     : 0
+    >> SILENT DATA LOSS: no julia exception, row did not land
+
+  case: missing → NULL
+    julia exception : none
+    C errors        : none
+    rows landed     : 1
+    read back       : missing  ::Missing
+    matches expected: YES
+
+== 2. controls — the other stringify-then-cast paths
+
+  case: UUID value (appender.jl:93)
+    julia exception : none
+    C errors        : none
+    rows landed     : 1
+    read back       : UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")  ::UUID
+    matches expected: YES
+
+  case: FixedDecimal (appender.jl:95)
+    julia exception : none
+    C errors        : none
+    rows landed     : 1
+    read back       : FixedDecimal{Int64,4}(12.3456)  ::FixedDecimal{Int64, 0x04}
+    matches expected: YES
+
+  case: FixedDecimal over-precision → DECIMAL(18,2)
+    julia exception : none
+    C errors        : none
+    rows landed     : 1
+    read back       : FixedDecimal{Int64,2}(12.35)  ::FixedDecimal{Int64, 0x02}
+    matches expected: NO (expected nothing)
+
+== 3. multi-row batch with one bad label in the middle
+    appended labels : ["sad", "ok", "banana", "happy"]
+    flush threw?    : no
+    C error         : Call to EndRow before all columns have been appended to!
+    rows in table   : ["sad", "ok", "happy"]
+    >> bad row dropped, good rows kept
+
+== 4. multi-column table with one failing cell — does data shift?
+    appended        : Tuple{Int32, String}[(1, "sad"), (2, "banana"), (3, "ok"), (4, "happy")]
+    C error         : Failed to cast value: Unimplemented type for cast (INTEGER -> ENUM('sad', 'ok', 'happy'))
+    rows in table   : Tuple{Int32, String}[(1, "sad"), (2, "ok"), (4, "happy")]
+    >> MISALIGNED — values shifted across rows/columns
+
+done.

@@ -7,8 +7,15 @@ the numbers move" (they always do) but "did any *ordering* move, and does it
 reach a tier".
 
 Produced by `tools/orderings.py`, which reproduces `run_all.jl:155-160`'s rule.
-Old data recovered from git (`HEAD:research/duckdb-driver-jl/raw/`); new data
-from the 2026-07-29 sweep.
+Old data recovered from git (`HEAD:research/duckdb-driver-jl/raw/`).
+
+> **READ THE LAST SECTION FIRST.** Three sweeps happened. The tallies in the
+> body below describe the **second** (2 repeats per config) and are superseded
+> by *six repeats at 64 threads* at the end of this file, which is authoritative
+> — including for §7.5's numbers. The body is kept because the old-vs-new
+> ordering comparison and the per-fix effect measurements were only possible
+> against the 2-repeat data, and because the sequence of three sweeps is itself
+> the record of how the harness was wrong twice.
 
 > **There were two repaired sweeps; this reports the second.** A code review
 > found the first repair was partial — only `read_first_chunk` closed its
@@ -105,3 +112,86 @@ Baseline for reading those deltas: write paths, which no fix touched, drifted
 uniformly **1.01–1.07× slower** between sweeps. That is day-to-day machine
 variation, and it is *larger* than the fresh-database "effect" — the strongest
 available evidence that that confound was immaterial rather than merely small.
+
+
+---
+
+# six repeats at 64 threads — 2026-07-30
+
+The 2-repeat sweep left a question it could not answer: are the 64-thread
+instabilities real noise, or an artefact of the harness repair? Re-swept with
+**2 repeats at 1 thread and 6 at 64**, clearing `raw/` so provenance stays
+coherent. Analysis by `tools/stability.py`, which reports the ordering
+*distribution* per cell instead of a binary flag.
+
+At n=6, a cell that were a true 50/50 tie would still look unanimous only 6.2%
+of the time, so unanimity is now evidence rather than an artefact of small n.
+At n=2 it carried no weight at all.
+
+## writes: nothing moves, at all
+
+```
+24 cells · 24 unanimous · 0 dominant · 0 split · winner stable 24/24
+```
+
+Every write ordering is identical across all six 64-thread repeats. §8.1's
+writer tier selection rests entirely on these, so **the codegen contract is
+confirmed, not merely un-contradicted**. This is a materially stronger
+statement than the old sweep could make.
+
+## reads: the winner is stable in 23 of 24 cells
+
+```
+24 cells · 18 unanimous · 4 dominant · 2 split · winner stable 23/24
+```
+
+The separation that matters: §7.3's actual claim is that `stream_first` is
+fastest. It wins **every run of every read cell except one**. The churn the
+binary rule flagged as "did not reproduce" is almost entirely `materialized`
+vs `streaming` trading 2nd and 3rd place — which §7.3 already tells readers to
+ignore ("a wash for throughput… do not choose between them on throughput").
+
+| Cell | Distribution | Winner |
+|---|---|---|
+| 64t · read · flat · 10k | **4 distinct orderings in 6 runs**; `streaming` 3/6, `stream_first` 3/6 | **moves** |
+| 64t · read · rich · 10k | dominant 5/6 | `stream_first` all 6 |
+| 64t · read · list · 10k | dominant 4/6 | `stream_first` all 6 |
+| 64t · read · rich · 100k | dominant 4/6 | `stream_first` all 6 |
+| 64t · read · struct · 10k | dominant 4/6 | `stream_first` all 6 |
+| 1t · read · struct · 10k | split 1/2 — **only 2 repeats, uninformative** | `stream_first` both |
+
+## the one genuine tie
+
+`64t · read · flat · 10,000` produced **four different orderings in six runs**,
+with `streaming` and `stream_first` each winning three. That is not a rare
+excursion and not an artefact — it is a real tie, at the smallest table under
+the thread count §7.4 already identifies as harmful ("the registered scan…
+degrades sharply, worst at small scales").
+
+So the question the extra repeats were run to settle is answered: **the
+64-thread instability is real, it is concentrated at the 10k scale, and in
+exactly one cell it reaches the winner.** The harness repair did not
+manufacture it.
+
+## what §7.5 should now say
+
+Not "22 of 24 read orderings reproduced", which conflates two different
+claims. Instead:
+
+- writes: **24 of 24 orderings unanimous across 6 repeats**
+- reads: **the fastest path is unanimous in 23 of 24 cells**; the full ordering
+  is unanimous in 18, dominant in 4, and genuinely split in 2
+- the single cell where the fastest path is not stable is
+  `64t · read · flat · 10k`, a real tie between `streaming` and `stream_first`
+
+## remaining resolution gap
+
+**1-thread now has the weakest evidence in the sweep** — 2 repeats, against 6
+at 64 threads — and it is the configuration §7.2 and §7.3 actually report. The
+`1t · read · struct · 10k` split cannot be interpreted at n=2.
+
+Raising it is cheaper than it looks: the 1-thread runs execute *concurrently*
+(each uses one thread on a 64-core box), so more repeats cost little wall
+clock. The caveat is memory-bandwidth contention — the harness comment claims
+"no measurable contention" for two concurrent runs, which has not been
+re-verified for four or six. Recorded as a decision, not assumed either way.
