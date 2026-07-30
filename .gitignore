@@ -8,3 +8,10 @@ site/.quarto
 site/_site
 .claude/settings.local.json
 /target/
+
+# generated research outputs — regenerable by re-running the scripts beside
+# them, and large (the jld2_04 sweep alone is 62 MB). the scripts, Project.toml
+# and Manifest.toml are tracked, so a run reproduces these exactly.
+research/**/*.jld2
+research/**/*.duckdb
+research/**/*.db
