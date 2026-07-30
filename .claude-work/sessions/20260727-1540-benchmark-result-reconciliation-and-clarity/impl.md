@@ -290,7 +290,7 @@ Mechanical. No number changes; one generator edit and one sentence.
   - `vruns.py` and `anchors.py` still pass — **0 shared runs · 0 unresolved**
   - `/code-review` on the `run_all.jl` change — **not run, see above**
 
-### phase 6: plain-language summary
+### phase 6: plain-language summary — DONE 2026-07-31T06:51:38+12:00
 
 New prose, therefore a new summary construct, therefore new checker coverage.
 
@@ -306,19 +306,54 @@ New prose, therefore a new summary construct, therefore new checker coverage.
         `register < appender < literal` notation `results.md` already uses,
         one line per (kind, thread config) with the scale caveats inline
       - no recommendation — §8.1 keeps tier selection (criterion 8)
-- [ ] **Extend `numbers.py`** to parse the ranking list and verify each line
+- [x] **Extend `numbers.py`** to parse the ranking list and verify each line
       against the `all_runs` view. Re-run `--selftest`; the new claims must be
       caught by mutation like every other claim.
 
+- also: the ranking list is a **table**, not the "one line per (kind, thread
+      config)" the plan specified. Four prose lines could not carry the scale
+      caveats without an "except" clause per line, and a rigid table is far
+      easier to parse reliably — which matters, because a fragile parser here
+      reintroduces exactly the silent-coverage-loss bug found in phase 4. 18
+      rows, 17 of them checkable.
+- also: **reads use a `{a, b}` brace notation** for a pair the sweep does not
+      order. Writing `stream_first < streaming < materialized` would have been
+      false — six of the seven unstable read cells are `materialized` and
+      `streaming` trading places. The collapsed view *looks* totally ordered
+      because collapsing picked one repeat.
+- also: each row asserts **two** properties — the named paths are exactly the
+      ok paths measured, and the strict order holds in every repeat. Set
+      equality stops a row silently omitting a measured path.
+- also: the claimed value is the ordering **string**, not a parsed structure,
+      so `mutate()` needed no change — appending `_mutated` yields a path name
+      never measured. But that only exercises set equality, so **three targeted
+      negative tests** were run for the properties mutation cannot reach:
+      permute an ordering (set held identical), invert a braced group, omit a
+      measured path. Each failed on exactly one claim, the right one.
+- also: one wording fix on the manual read-through — "§8.1 **ranks** five
+      tiers" became "**orders** five tiers, but only four carry a measurement",
+      because "ranks" next to a speed table implied the tier order *is* the
+      speed ranking. §8.1 orders by precondition fallback.
+- also: added a line the plan did not ask for, because the table invites a
+      specific misreading — where a row lists one path, the others were **not
+      available** to measure, not merely slower. §4.1 named as the authority.
+- not done: `/code-review` on the `numbers.py` changes. Flagged at the phase
+      boundary; not run. Carried as a follow-up alongside phases 4 and 5.
+
 - **verify:**
   - `numbers.py` → 0 FAIL, and coverage count has **risen** by the number of
-    new ranking claims
-  - `--selftest` still catches 100%, including the new claims
+    new ranking claims — **159 verified (142 + 17 ranking) · 0 FAILED**
+  - `--selftest` still catches 100%, including the new claims — **159 mutated,
+    0 survived**; plus three negative tests for the ordering property that
+    string mutation cannot reach
   - the four existing audits still pass — in particular `anchors.py`, since
     the summary adds cross-references, and `vruns.py`, since §7 gained text
+    — **57 links/58 headings/0 unresolved · 0 shared runs · 160 cites resolved
+    · runblocks 14 clean**
   - read the new summary against §8.1 and §7.6 by hand: it must not state or
-    imply a recommendation
-  - `/code-review` on the `numbers.py` changes
+    imply a recommendation — **done; §7.6 states tier selection lives in §8.1
+    alone and §7.0 defers to it explicitly. One phrase tightened, see above**
+  - `/code-review` on the `numbers.py` changes — **not run, see above**
 
 ## follow-ups to record at close
 

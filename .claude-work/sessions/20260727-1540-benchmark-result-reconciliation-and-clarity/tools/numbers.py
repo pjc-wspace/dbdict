@@ -335,6 +335,93 @@ def extract_coverage(lines, start, end, runs, claims):
                           (float(m.group(1)), 0.5), approx(notapp), "count"))
 
 
+def parse_ordering(text):
+  """'a < {b, c}' -> [['a'], ['b', 'c']]. a braced group is deliberately unordered.
+
+  returns None if the text is not an ordering at all (the 'no stable ordering'
+  row), so the caller can skip it rather than manufacture a claim about it.
+  """
+  text = text.strip().strip("`").strip()
+  if "<" not in text and "{" not in text:
+    # a single bare path is still an ordering — a one-element one. anything
+    # with a space in it (e.g. 'no stable ordering — see §7.5') is prose
+    if not re.fullmatch(r"[a-z_]+", text):
+      return None
+  groups = []
+  for part in text.split("<"):
+    part = part.strip()
+    if part.startswith("{"):
+      inner = part.strip("{}").split(",")
+      groups.append([p.strip().strip("`") for p in inner])
+    else:
+      groups.append([part.strip("`")])
+  return groups
+
+
+def extract_summary_rankings(lines, start, end, runs, claims):
+  """§7.0 — the plain-language ranking table, checked against EVERY repeat.
+
+  each row asserts two things and both are verified:
+    1. the paths it names are exactly the ok paths measured for that cell —
+       so a row cannot quietly omit a path that was measured
+    2. the strict `<` order holds in every run, not just the reported one
+
+  the claimed value is the ordering STRING, which is what makes this
+  mutation-testable with no change to mutate(): appending '_mutated' produces a
+  path name that was never measured, so check (1) fails. keeping the value a
+  string rather than a parsed structure is deliberate.
+  """
+  # 'write · 64 threads | `flat` | 100k · 1M | `register < appender < literal`'
+  row = re.compile(
+    r"^\|\s*(write|read)\s*·\s*(\d+)\s*threads?\s*\|"      # kind, thread count
+    r"\s*`([a-z_]+)`\s*\|"                                  # profile
+    r"\s*([^|]+?)\s*\|"                                     # scales
+    r"\s*([^|]+?)\s*\|\s*$")                                # ordering
+
+  for n in range(start, end):
+    m = row.match(lines[n - 1].rstrip())
+    if not m:
+      continue
+    kind, threads, profile = m.group(1), int(m.group(2)), m.group(3)
+    scale_text, ordering_text = m.group(4).strip(), m.group(5).strip()
+
+    if scale_text == "all":
+      scales = sorted(SCALE_WORDS.values())
+    else:
+      scales = sorted(SCALE_WORDS[w.strip()] for w in scale_text.split("·")
+                      if w.strip() in SCALE_WORDS)
+    if not scales:
+      continue
+    if parse_ordering(ordering_text) is None:
+      continue          # the 'no stable ordering' row makes no ordering claim
+
+    def compare(claimed, kind=kind, threads=threads, profile=profile,
+                scales=scales):
+      groups = parse_ordering(claimed)
+      if groups is None:
+        return False, "unparseable ordering"
+      named = [p for g in groups for p in g]
+      for scale in scales:
+        for run in runs:
+          if run["threads"] != threads:
+            continue
+          med = {c["path"]: c["median_ns"] for c in run["cells"]
+                 if c["kind"] == kind and c["profile"] == profile
+                 and c["scale"] == scale and c["status"] == "ok"}
+          if set(named) != set(med):
+            return False, (f"{run['tag']} @{scale}: names {sorted(named)}, "
+                           f"measured {sorted(med)}")
+          # each group must finish strictly before the next one starts
+          for a, b in zip(groups, groups[1:]):
+            if max(med[p] for p in a) >= min(med[p] for p in b):
+              return False, (f"{run['tag']} @{scale}: {a} not strictly "
+                             f"faster than {b}")
+      return True, f"holds in every repeat at {threads}t"
+
+    claims.append(Claim(n, f"§7.0 ranking {kind}/{profile}@{threads}t",
+                        ordering_text, compare, "ranking"))
+
+
 def extract_ratios(lines, start, end, collapsed, claims, doc_end):
   """the derived ratios in §7's prose, and their restatements elsewhere.
 
@@ -444,6 +531,7 @@ def collect(refpath, rawdir):
   extract_thread_table(lines, s7, e7, collapsed, claims,
                        hi[-1] if hi else 1)
   extract_stability(lines, s7, e7, runs, claims)
+  extract_summary_rankings(lines, s7, e7, runs, claims)
   extract_ratios(lines, s7, e7, collapsed, claims, len(lines) + 1)
   return lines, claims
 

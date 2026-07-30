@@ -1243,6 +1243,85 @@ body under `try`/`finally` (§5.1.3).
 
 ## 7. Benchmarks
 
+### 7.0 What was measured, and how it came out
+
+Orientation for the rest of §7. Every method below is treated in full elsewhere;
+this is a gloss and a pointer, never a second explanation.
+
+**Write paths measured** — four of §8.1's five tiers:
+
+- **`register`** (tier 1) — register a Julia table as a virtual table, then
+  `INSERT INTO … SELECT` from it —
+  [§4.2](#42-registered-tables-register-tier-1)
+- **`register_flat`** (tier 2) — the same, with STRUCT columns decomposed into
+  leaf columns first — [§4.3](#43-register_flat-struct-columns-tier-2)
+- **`appender`** (tier 4) — DuckDB's C appender —
+  [§4.5](#45-appender-the-uuid-path-tier-4)
+- **`literal`** (tier 5) — generated `INSERT` statements with literal values,
+  batched 1000 rows per statement —
+  [§4.6](#46-literal-sql-the-universal-fallback-tier-5)
+
+**Read paths measured** — three ways to consume one result:
+
+- **`materialized`** — run the query and build the whole result —
+  [§3.3](#33-materialized-reads)
+- **`streaming`** — consume every chunk in sequence —
+  [§3.4](#34-streaming-reads)
+- **`stream_first`** — time only to the first chunk, then stop —
+  [§3.4](#34-streaming-reads)
+
+**Not measured.** Two write paths carry no timing at all: **prepared bind**
+(tier 3, [§4.4](#44-prepared-bind-the-blob-path-tier-3)) and **per-row
+`INSERT`**.
+
+The consequence is worth stating plainly: **§8.1 orders five tiers, but only four
+of them carry a measurement.** Tier 3's position between `register_flat` and the
+appender rests on the argument in §4.4 and §8.1, not on any timing in this
+section. Anyone relying on that position is relying on reasoning, not on
+measurement.
+
+#### How they came out
+
+Fastest first, in the notation `results.md` uses. `{a, b}` marks a pair this
+sweep deliberately does **not** order — §7.3 finds `materialized` and
+`streaming` a wash, so naming a winner between them would claim more than the
+data supports. Every row below holds in **every** repeat, not only in the one
+the tables report.
+
+| Kind · threads | Profile | Scales | Ordering, fastest first |
+|---|---|---|---|
+| write · 1 thread | `flat` | all | `register < appender < literal` |
+| write · 1 thread | `rich` | all | `appender < literal` |
+| write · 1 thread | `struct` | all | `register_flat < literal` |
+| write · 1 thread | `list` | all | `literal` |
+| write · 64 threads | `flat` | 10k | `appender < register < literal` |
+| write · 64 threads | `flat` | 100k · 1M | `register < appender < literal` |
+| write · 64 threads | `rich` | all | `appender < literal` |
+| write · 64 threads | `struct` | all | `register_flat < literal` |
+| write · 64 threads | `list` | all | `literal` |
+| read · 1 thread | `flat` | all | `stream_first < {materialized, streaming}` |
+| read · 1 thread | `rich` | all | `stream_first < {materialized, streaming}` |
+| read · 1 thread | `struct` | all | `stream_first < {materialized, streaming}` |
+| read · 1 thread | `list` | all | `stream_first < {materialized, streaming}` |
+| read · 64 threads | `rich` | all | `stream_first < {materialized, streaming}` |
+| read · 64 threads | `struct` | all | `stream_first < {materialized, streaming}` |
+| read · 64 threads | `list` | all | `stream_first < {materialized, streaming}` |
+| read · 64 threads | `flat` | 100k · 1M | `stream_first < {materialized, streaming}` |
+| read · 64 threads | `flat` | 10k | no stable ordering — see §7.5 |
+
+Three things that table is saying and the per-cell tables are not. The single
+crossover in the whole sweep is `write · flat · 10k`, where the appender takes
+the lead at 64 threads and `register` holds it everywhere else. `stream_first`
+is fastest in every read cell except `64 threads · flat · 10k`, which is a
+genuine tie. And the paths named per row are the *only* ones measured for that
+profile — where a row lists one path, the others were not available to measure,
+not merely slower; [§4.1](#41-write-capability-matrix) is the authority on which
+paths a table can use at all.
+
+These are orderings, not a recommendation. Tier selection turns on what a
+table's column types permit, not on speed alone, and stays in
+[§8.1](#81-writer-tier-selection).
+
 ### 7.1 Methodology
 
 - **Harness**: `bench_common.jl` (profiles, data generation, write paths, content gate),
