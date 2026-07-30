@@ -252,24 +252,43 @@ mean something.
     — **four in `mismatches.md`, plus this plan's own correction at the §7.5
     checker-scope line**
 
-### phase 5: repeat-collapse disclosure
+### phase 5: repeat-collapse disclosure — DONE 2026-07-30T17:26:49+12:00
 
 Mechanical. No number changes; one generator edit and one sentence.
 
-- [ ] **Disclosure in `results.md`** — edit the header `println` block at
-      `run_all.jl:146-148`, stating that absolute times are one repeat (the
-      first by filename order), that the other repeat feeds only the stability
-      table, and that the tag naming is what makes it the `-a` run.
+- [x] **Disclosure in `results.md`** — edit the header `println` block at
+      `run_all.jl:177-180` (the plan said `146-148`; the phase-2 harness repair
+      shifted it), stating that absolute times are one repeat (the first by
+      filename order), that the other repeats feed only the stability table,
+      and that the tag naming is what makes it the `-a` run.
       Regenerate. **The resulting diff must be header-only.**
-- [ ] **Same disclosure in `reference.md` §7.1**, one sentence, phrased for a
+- [x] **Same disclosure in `reference.md` §7.1**, one sentence, phrased for a
       reader who will never open `run_all.jl`.
+
+- also: the disclosure interpolates `$(length(runs))` rather than hardcoding a
+      repeat count, so it stays true when the sweep size changes. The plan was
+      written when there were 2 repeats and said "the other repeat" (singular);
+      there are now 6.
+- also: added one clause the plan did not ask for — that two absolute times in
+      the tables can differ by ordinary run-to-run spread, which is *why* the
+      ordering rather than the magnitude is the deliverable. Without it the
+      disclosure states a mechanism and leaves the reader to derive the
+      consequence.
+- also: `vruns.py` passing is a real check here, not a formality — the same
+      fact is now disclosed in two files, which is exactly the duplication that
+      gate exists to catch. It passes because the two versions address different
+      readers, which is what the plan's "phrased for a reader who will never
+      open `run_all.jl`" was for.
+- not done: `/code-review` on the `run_all.jl` change. Flagged to the user at
+      the phase boundary; not run. Carried as a follow-up.
 
 - **verify:**
   - `git diff RES/results.md` after regeneration touches only the header block
+    — **8 added lines in the header, nothing else; `results.json` byte-identical**
   - `numbers.py` → 0 FAIL, coverage count **unchanged** — this phase must not
-    move a single number
-  - `vruns.py` and `anchors.py` still pass
-  - `/code-review` on the `run_all.jl` change
+    move a single number — **142 verified · 16 derived · 0 FAILED, unchanged**
+  - `vruns.py` and `anchors.py` still pass — **0 shared runs · 0 unresolved**
+  - `/code-review` on the `run_all.jl` change — **not run, see above**
 
 ### phase 6: plain-language summary
 

@@ -1275,6 +1275,13 @@ body under `try`/`finally` (§5.1.3).
   claim was only ever established for *two* concurrent single-thread runs, never for
   more. The `-t auto` repeats run serially, because each claims every core and contention
   could flip the orderings the sweep exists to check.
+- **Which repeat the tables report**: every absolute time in §7.2–§7.4 is from a *single*
+  repeat, not an average. The merge sorts the raw files by filename and keeps the first
+  value it sees for each path, so the run tagged `-a` supplies every figure in this
+  section — a consequence of tag naming, not of it being the best or the median run. The
+  other repeats feed only the ordering-stability analysis in §7.5. Two absolute times in
+  these tables can therefore differ by ordinary run-to-run spread, which is why the
+  ordering rather than the magnitude is the deliverable.
 - **Content gate**: every cell is value-verified before timing — not merely row-counted,
   because §5.1.2 proved row counts insufficient. It caught §5.2.1 immediately.
 - **Result handling**: all three read paths close their `QueryResult` inside the timed

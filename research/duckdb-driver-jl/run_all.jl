@@ -179,6 +179,20 @@ function do_merge()
   println(io, "**ordering**, which is stable across runs; absolute times are indicative and")
   println(io, "machine-specific (goal.md constraints).\n")
 
+  # disclose the repeat-collapse rule, because nothing in the tables reveals it.
+  # every number below comes from ONE repeat per thread config, and which repeat
+  # is decided by the filename sort at `files` above — so the `-a` tag wins for
+  # no reason other than that "a" sorts first. that is a naming coincidence doing
+  # load-bearing work: rename the tags and every figure in this file changes
+  # without any measurement changing
+  println(io, "**Absolute times below are from a single repeat per thread configuration**,")
+  println(io, "not an average over the $(length(runs)) runs merged here. `raw/*.json` is")
+  println(io, "sorted by filename and the first value seen for each path is the one")
+  println(io, "reported, so the `-a` run supplies every number in the tables — for no")
+  println(io, "better reason than that `a` sorts before the other tags. The remaining")
+  println(io, "repeats feed only the ordering-stability table at the end of this file;")
+  println(io, "they never average or widen the figures.\n")
+
   # the environment table describes ALL runs, so drift between them must not be
   # silently papered over by reporting run 1's values. same for verifications
   # below: a failure in run 3 was previously invisible
