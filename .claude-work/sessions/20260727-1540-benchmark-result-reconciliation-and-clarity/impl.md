@@ -149,9 +149,13 @@ mean something.
       - §7.3 read table — medians
       - §7.4 thread table — both values per row plus the stated change
         (`7.4× slower`, `~unchanged`, `7% faster`)
-      - §7.5 — the reproduced/total counts, the two named non-reproducing
-        cells, and the one cross-config write ordering difference, all against
-        the `all_runs` view
+      - §7.5 — the reproduced/total counts, against the `all_runs` view.
+        **Correction (phase 4):** this step originally also claimed the named
+        non-reproducing cells and the cross-config write ordering difference
+        were verified. They are not. `extract_stability`
+        (`tools/numbers.py:377-414`) emits exactly four claims, matched off two
+        fixed sentence forms — the `order 4` in the coverage breakdown is those
+        four counts. §7.5's tables are hand-verified against `stability.py`
       - §7.1 — coverage counts (84 cells/run, 4 runs, 60 measured, 24 skipped,
         0 failed, 9 `register_flat` skips per run), thread configs, scales,
         repeat count
@@ -191,25 +195,62 @@ mean something.
 > known-wrong values catches a tool that is wholly broken; mutation catches a
 > tool that is broken per-claim, which is the shape the previous failures took.
 
-### phase 4: corrections
+### phase 4: corrections — DONE 2026-07-30T17:15:19+12:00
 
-- [ ] For each entry in `SESS/mismatches.md`: correct `reference.md` from the
+- [x] For each entry in `SESS/mismatches.md`: correct `reference.md` from the
       raw JSON, or record it as a follow-up with the reason it was not
       corrected. Every correction cites which cell of which run it came from.
-- [ ] Trace every correction into the defect quartet — §1, §4.1, §8.1, §8.2 —
+- [x] Trace every correction into the defect quartet — §1, §4.1, §8.1, §8.2 —
       and into §7.6. A corrected number that a summary construct still quotes
       at its old value is the exact defect class of the last two sessions.
-- [ ] If a mismatch turns out to be a *reasoning* error rather than a
+- [x] If a mismatch turns out to be a *reasoning* error rather than a
       transcription error (the ratio was computed from the wrong pair of
       cells, say), note it separately — it may invalidate a conclusion, not
       just a figure.
 
+- also: **the 12-run sweep landed first** (6 repeats at BOTH thread counts,
+      11:07–12:35), so phase 4 corrected against that rather than the Jul 29
+      data. Headline: `orderings MOVED: 0` vs the original pre-repair snapshot —
+      every §7 number changed, no ranking did. The 1-thread question is closed:
+      `1t·read·struct·10k` is unanimous at n=6, so its n=2 split was an
+      artefact. Recorded as a fourth section in `ordering-delta.md`.
+- also: **`mismatches.md` Part 2 was stale and four of its rows were false**
+      (notably "the two moved orderings" — zero moved; and "all instability is
+      now at 64 threads" — two 1-thread cells are dominant 5/6). Acting on it
+      would have written false statements into `reference.md`. Superseded by
+      Part 3 rather than followed.
+- also: the quartet's fourth site is the **Driver study appendix**, not §4.1 or
+      §8.2 as this plan guessed. The checker's line numbers, not the plan, are
+      authoritative for restatement sites.
+- also: **a checker bug was found by this phase's own verify criterion.**
+      `extract_ratios` hardcoded the claimed values (`r"3\.4×"`), so correcting
+      a number made the claim *disappear* rather than re-check — coverage fell
+      142 → 137 while the run still reported clean. `--selftest` cannot catch
+      this: mutation only perturbs claims that were found. Fixed at
+      `tools/numbers.py:361-379` with generic value slots anchored on
+      surrounding words. Full write-up in `mismatches.md` Part 4.
+- also: §7.5 was **renumbered, not restructured.** `extract_stability` matches
+      two fixed sentence forms, so the fastest-path-vs-full-ordering split
+      reporting moves to phase 6, where prose and coverage land together. §7.5
+      states no unchecked `23 of 24`.
+- also: three §7.1 methodology disclosures added (symmetric bounded result
+      close, per-cell fixture drops, fresh read database with its null result),
+      and one broken anchor introduced-then-fixed (`anchors.py` collapses
+      whitespace runs to a single hyphen, so an em-dash heading yields
+      `-1-thread`, not `--1-thread`).
+
 - **verify:**
   - `numbers.py reference.md RES/raw` → 0 FAIL, coverage count unchanged from
     phase 2 (a drop means claims went missing rather than getting fixed)
+    — **142 verified · 16 derived · 0 vacuous · 0 FAILED; `--selftest` 142
+    mutated, 0 survived**
   - the four existing audits still pass, run from the closed session's tools:
     `runblocks.py`, `citations.py`, `anchors.py`, `vruns.py`
+    — **14 clean/0 failing · 160 resolved/0 unresolved · 0 unresolved anchors ·
+    0 shared runs**
   - every follow-up is written down, not just mentioned
+    — **four in `mismatches.md`, plus this plan's own correction at the §7.5
+    checker-scope line**
 
 ### phase 5: repeat-collapse disclosure
 

@@ -1,0 +1,52 @@
+DuckDB.jl appender / transaction verification
+driver source: /home/pjc/.julia/packages/DuckDB/2J7sd/src
+
+== 1. append + flush inside DBInterface.transaction, then commit
+  transaction threw?                             : no
+  rows after commit                              : 5
+  VERDICT                                        : rows survive commit
+
+== 2. append + flush inside a transaction, then ROLLBACK
+  rows visible before rollback                   : 5
+  rows after rollback                            : 0
+  VERDICT                                        : appender rows ARE in the transaction (rolled back)
+
+== 3. COMMIT while rows are still buffered (no flush inside the txn)
+  rows visible before commit                     : 0
+  commit threw?                                  : no
+  rows right after commit                        : 0
+  close threw?                                   : no
+  rows after closing the appender                : 5
+  VERDICT                                        : unflushed rows land AFTER commit — outside the txn
+
+== 4. ROLLBACK while rows are still buffered
+  rollback threw?                                : no
+  rows right after rollback                      : 0
+  close threw?                                   : no
+  rows after closing the appender                : 5
+  VERDICT                                        : 5 rows SURVIVED a rollback — leak
+
+== 5. bulk-replace: BEGIN; DELETE; append; <error>; ROLLBACK
+  rows before replace                            : 5
+  transaction threw (expected)?                  : yes
+  rows after failed replace                      : 5
+  VERDICT                                        : atomic — original data intact
+
+== 6. second connection's view of an open transaction
+  writer connection sees                         : 5
+  second connection sees                         : 0
+  second connection after commit                 : 5
+  VERDICT                                        : properly isolated — no uncommitted reads
+
+== 7. mitigation: appender closed in a finally INSIDE the txn body
+  transaction threw (expected)?                  : yes
+  rows after rollback                            : 0
+  VERDICT                                        : mitigation HOLDS — no leak
+
+== 7b. counter-example: appender abandoned to the finalizer
+  transaction threw (expected)?                  : yes
+  rows right after rollback                      : 0
+  rows after forced GC                           : 5
+  VERDICT                                        : LEAK — 5 rows appeared at GC time, after the rollback
+
+done.

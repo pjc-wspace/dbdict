@@ -72,7 +72,7 @@ and `INTERVAL`, which is read-only on every path (§4.1).
 "much faster than using prepared statements or individual INSERT INTO statements"
 (<https://duckdb.org/docs/lts/clients/julia.html>), and the driver study concluded the
 appender should be the default writer. Measured: at 1 thread, `register_table` +
-`INSERT … SELECT` beats the appender at **every** scale tested — **3.4×** faster and
+`INSERT … SELECT` beats the appender at **every** scale tested — **3.6×** faster and
 **538×** fewer allocations at 1M rows (§7.2). The docs' claim was never tested against
 the registered-scan path.
 
@@ -1270,12 +1270,24 @@ body under `try`/`finally` (§5.1.3).
   `literal` is batched at 1000 rows per statement (`bench_common.jl:225`).
 - **Thread configurations**: 1 and 64. DuckDB takes its thread count from Julia's
   (`database.jl:81-82`), so this controls DuckDB's parallelism too.
-- **Repeats**: 2 per configuration. The `-t 1` repeats run concurrently; the `-t auto`
-  repeats run serially, because each claims every core and contention could flip the
-  orderings the sweep exists to check.
+- **Repeats**: 6 per configuration. The `-t 1` repeats run two at a time, in three
+  sequential pairs — concurrency is capped at 2 because the "no measurable contention"
+  claim was only ever established for *two* concurrent single-thread runs, never for
+  more. The `-t auto` repeats run serially, because each claims every core and contention
+  could flip the orderings the sweep exists to check.
 - **Content gate**: every cell is value-verified before timing — not merely row-counted,
   because §5.1.2 proved row counts insufficient. It caught §5.2.1 immediately.
-- **Coverage**: 84 cells per run × 4 runs; 60 measured, 24 skipped, **0 failed**. Skips
+- **Result handling**: all three read paths close their `QueryResult` inside the timed
+  region, so each pays one bounded `duckdb_destroy_result`. The symmetry is the point:
+  the three paths are ranked against each other, so a teardown cost charged to one of
+  them and not the others would corrupt the comparison rather than merely inflate it.
+- **Isolation**: fixtures are dropped between cells, and the read sweep builds a fresh
+  database. Every cell is therefore measured without any other cell's tables resident.
+  The fresh read database made **no measurable difference** — `materialized` and
+  `streaming` moved 0.97–1.05×, against a 1.01–1.07× drift in the untouched write paths
+  over the same interval. A null result, but worth stating, because the earlier sweeps
+  did read against the write sweep's 1M-row leftovers.
+- **Coverage**: 84 cells per run × 12 runs; 60 measured, 24 skipped, **0 failed**. Skips
   carry a driver `file:line` or measured reason, except the 9 `register_flat` cells per
   run skipped as "not applicable — profile has no struct column", which is a harness
   design choice.
@@ -1286,23 +1298,23 @@ Median · rows/s · allocations. Full tables in `results.md`.
 
 | Profile | Scale | appender | register | register_flat | literal |
 |---|---|---|---|---|---|
-| flat | 10k | 2.051 ms · 4.9M/s · 76,936 | **1.015 ms · 9.9M/s · 329** | n/a | 155.914 ms · 64k/s |
-| flat | 100k | 19.377 ms · 5.2M/s · 796,936 | **6.116 ms · 16.4M/s · 1,649** | n/a | 1.718 s · 58k/s |
-| flat | 1M | 195.964 ms · 5.1M/s · 7,996,936 | **58.115 ms · 17.2M/s · 14,853** | n/a | 17.667 s · 57k/s |
-| rich | 10k | **12.313 ms · 812k/s** | ❌ UUID | n/a | 148.721 ms · 67k/s |
-| rich | 100k | **122.023 ms · 820k/s** | ❌ UUID | n/a | 1.677 s · 60k/s |
-| rich | 1M | **1.614 s · 619k/s · 19.9M** | ❌ UUID | n/a | 18.234 s · 55k/s |
-| struct | 10k | ❌ NamedTuple | ❌ NamedTuple | **730.721 µs · 13.7M/s · 234** | 94.988 ms · 105k/s |
-| struct | 100k | ❌ | ❌ | **3.022 ms · 33.1M/s · 1,114** | 1.042 s · 96k/s |
-| struct | 1M | ❌ | ❌ | **29.839 ms · 33.5M/s · 9,918** | 12.929 s · 77k/s · 1.705 GiB |
-| list | 10k | excluded (§5.1.4) | ❌ Vector | n/a | **91.776 ms · 109k/s** |
-| list | 100k | excluded (§5.1.4) | ❌ Vector | n/a | **1.033 s · 97k/s** |
-| list | 1M | excluded (§5.1.4) | ❌ Vector | n/a | **11.483 s · 87k/s** |
+| flat | 10k | 2.116 ms · 4.7M/s · 76,936 | **1.015 ms · 9.9M/s · 329** | n/a | 164.451 ms · 61k/s |
+| flat | 100k | 20.010 ms · 5.0M/s · 796,936 | **5.963 ms · 16.8M/s · 1,649** | n/a | 1.629 s · 61k/s |
+| flat | 1M | 205.277 ms · 4.9M/s · 7,996,936 | **57.339 ms · 17.4M/s · 14,853** | n/a | 18.175 s · 55k/s |
+| rich | 10k | **11.770 ms · 850k/s** | ❌ UUID | n/a | 151.012 ms · 66k/s |
+| rich | 100k | **114.628 ms · 872k/s** | ❌ UUID | n/a | 1.717 s · 58k/s |
+| rich | 1M | **1.469 s · 681k/s · 19.9M** | ❌ UUID | n/a | 18.889 s · 53k/s |
+| struct | 10k | ❌ NamedTuple | ❌ NamedTuple | **727.656 µs · 13.7M/s · 234** | 96.755 ms · 103k/s |
+| struct | 100k | ❌ | ❌ | **2.979 ms · 33.6M/s · 1,114** | 1.025 s · 98k/s |
+| struct | 1M | ❌ | ❌ | **28.911 ms · 34.6M/s · 9,918** | 11.753 s · 85k/s · 1.705 GiB |
+| list | 10k | excluded (§5.1.4) | ❌ Vector | n/a | **100.987 ms · 99k/s** |
+| list | 100k | excluded (§5.1.4) | ❌ Vector | n/a | **1.007 s · 99k/s** |
+| list | 1M | excluded (§5.1.4) | ❌ Vector | n/a | **10.937 s · 91k/s** |
 
 The `list`/`appender` cells are excluded by harness policy, at every scale — see §5.1.4
 for what was and was not measured.
 
-**At flat/1M:** `register` is **3.4×** faster than the appender (58.115 vs 195.964 ms),
+**At flat/1M:** `register` is **3.6×** faster than the appender (57.339 vs 205.277 ms),
 allocates **538×** less (14,853 vs 7,996,936) and uses **328×** less memory
 (380.672 KiB vs 122.024 MiB).
 
@@ -1311,32 +1323,32 @@ The allocation figure is the mechanical story: the appender's count is almost ex
 cell, not vectorized on the Julia side" costs. On `rich` it rises to ~20 per row over 4
 columns, because UUID and FixedDecimal are stringified before appending.
 
-`literal` is 2–3 orders of magnitude behind everywhere — 304× slower than `register` at
+`literal` is 2–3 orders of magnitude behind everywhere — 317× slower than `register` at
 flat/1M — and allocates up to 1.705 GiB.
 
 ### 7.3 Read results — 1 thread
 
 | Profile | Scale | materialized | streaming | stream_first |
 |---|---|---|---|---|
-| flat | 10k | 412.382 µs | 355.655 µs | 246.058 µs |
-| flat | 100k | 3.212 ms | 2.764 ms | 403.819 µs |
-| flat | 1M | 32.184 ms | 43.610 ms | **420.360 µs** |
-| rich | 1M | 181.058 ms | 155.877 ms | 583.164 µs |
-| struct | 1M | 854.118 ms | 865.208 ms | 1.837 ms |
-| list | 1M | 55.265 ms | 61.697 ms | 537.499 µs |
+| flat | 10k | 385.937 µs | 360.102 µs | 228.380 µs |
+| flat | 100k | 3.056 ms | 2.807 ms | 356.015 µs |
+| flat | 1M | 32.225 ms | 44.264 ms | **377.498 µs** |
+| rich | 1M | 180.819 ms | 146.401 ms | 529.176 µs |
+| struct | 1M | 888.252 ms | 868.813 ms | 1.843 ms |
+| list | 1M | 57.092 ms | 64.397 ms | 489.005 µs |
 
-**Time-to-first-chunk is the result.** It is essentially flat in table size — 246 µs at
-10k rows, 420 µs at 1M on `flat`: a 100× data increase for a 1.7× latency increase.
+**Time-to-first-chunk is the result.** It is essentially flat in table size — 228 µs at
+10k rows, 377 µs at 1M on `flat`: a 100× data increase for a 1.65× latency increase.
 That is the entire case for streaming, subject to the `ORDER BY` caveat in
 [§3.4](#34-streaming-reads).
 
 **Materialized vs streaming is a wash for throughput.** Each wins some cells, the gaps
-are small, and one of the two non-reproducing orderings sits here. Do not choose between
-them on throughput.
+are small, and **six of the seven** unstable orderings in §7.5 are this pair trading
+places. Do not choose between them on throughput.
 
 **Measurement limitation:** BenchmarkTools reports *total* allocation, not peak working
 set, and the streaming benchmark consumes every chunk. So the allocation columns are
-near-identical (flat/1M: 58.541 vs 59.143 MiB) and say **nothing** about streaming's
+near-identical (flat/1M: 58.541 vs 59.137 MiB) and say **nothing** about streaming's
 peak-memory advantage. That advantage is real by construction but **not measured here**.
 
 ### 7.4 Thread count
@@ -1346,14 +1358,14 @@ paths badly:
 
 | Cell | 1 thread | 64 threads | Change |
 |---|---|---|---|
-| flat 10k · register | 1.015 ms | 7.535 ms | **7.4× slower** |
-| struct 10k · register_flat | 730.721 µs | 5.709 ms | **7.8× slower** |
-| flat 1M · register | 58.115 ms | 111.231 ms | 1.9× slower |
-| struct 1M · register_flat | 29.839 ms | 58.752 ms | 2.0× slower |
-| flat 10k · read materialized | 412.382 µs | 991.340 µs | 2.4× slower |
-| flat 1M · literal | 17.667 s | 20.360 s | 1.15× slower |
-| flat 1M · appender | 195.964 ms | 203.457 ms | ~unchanged |
-| rich 1M · appender | 1.614 s | 1.500 s | 7% *faster* |
+| flat 10k · register | 1.015 ms | 7.553 ms | **7.4× slower** |
+| struct 10k · register_flat | 727.656 µs | 6.011 ms | **8.3× slower** |
+| flat 1M · register | 57.339 ms | 115.745 ms | 2.0× slower |
+| struct 1M · register_flat | 28.911 ms | 53.911 ms | 1.9× slower |
+| flat 10k · read materialized | 385.937 µs | 1.008 ms | 2.6× slower |
+| flat 1M · literal | 18.175 s | 21.114 s | 1.16× slower |
+| flat 1M · appender | 205.277 ms | 204.630 ms | ~unchanged |
+| rich 1M · appender | 1.469 s | 1.381 s | 6% *faster* |
 
 Three cells did improve — `rich` appender writes and `rich`/1M reads — all by ≤7%, which
 is within run-to-run spread. No path improved meaningfully.
@@ -1372,18 +1384,34 @@ is a property of the *process*, fixed at DB construction from how Julia was laun
 
 ### 7.5 Ordering stability
 
-- **Writes: all 24 orderings reproduced.** Every write recommendation is stable.
-- **Reads: 22 of 24 reproduced.**
+Across 6 repeats per thread configuration. "Reproduced" means the *full* ordering of
+paths agreed in every repeat, which is a stricter test than "the same path won".
 
-The two that did not:
+- **Writes: all 24 orderings reproduced.** Every write recommendation is stable. At n=6
+  a true 50/50 tie would still look unanimous only 6.2% of the time, so this is evidence
+  rather than an artefact of a small repeat count.
+- **Reads: 17 of 24 reproduced.**
 
-| Cell | What flipped |
-|---|---|
-| 1 thread · read · struct · 1M | `materialized` vs `streaming` — a near-tie (854.118 vs 865.208 ms) |
-| 64 threads · read · flat · 10k | `streaming` vs `stream_first`; `materialized` was last in both runs |
+The seven that did not, with how often the most common ordering occurred:
 
-Note the second is a **latency** instability, in the metric §7.3 calls the actual result
-— not a materialized-vs-streaming tie.
+| Cell | Agreement | What flipped |
+|---|---|---|
+| 1 thread · read · list · 100k | 5 of 6 | `materialized` vs `streaming` |
+| 1 thread · read · struct · 1M | 5 of 6 | `materialized` vs `streaming` — a near-tie (888.252 vs 868.813 ms) |
+| 64 threads · read · flat · 10k | 2 of 6 — **five orderings in six runs** | all three paths; `streaming` fastest 3/6, `materialized` 2/6, `stream_first` 1/6 |
+| 64 threads · read · list · 10k | 4 of 6 | `materialized` vs `streaming` |
+| 64 threads · read · rich · 100k | 5 of 6 | `materialized` vs `streaming` |
+| 64 threads · read · struct · 10k | 4 of 6 | `materialized` vs `streaming` |
+| 64 threads · read · struct · 1M | 4 of 6 | `materialized` vs `streaming` |
+
+Six of the seven are the `materialized`/`streaming` swap [§7.3](#73-read-results-1-thread)
+tells you to ignore, with `stream_first` fastest in every repeat. Only
+`64 threads · read · flat · 10k` changes *which path is fastest* — a genuine tie at the
+smallest table under the thread count §7.4 identifies as harmful. It reproduced across two
+independent six-repeat sweeps, so it is a property of the workload, not of the harness.
+
+At 1 thread — the configuration §7.2 and §7.3 report — `stream_first` is fastest in every
+repeat of every read cell.
 
 **One write ordering differs between thread configurations** (stable within each, so a
 real effect):
@@ -1427,7 +1455,7 @@ fit for an earlier tier — `BLOB + DECIMAL` and `BLOB + UUID` are the cases tha
 this. BLOB points at tier 3, but bind writes neither DECIMAL nor UUID, and the appender
 cannot write BLOB, so both tables land at tier 5.
 
-Tier 1 is both the fastest (3.4× the appender at flat/1M; full figures §7.2) and the
+Tier 1 is both the fastest (3.6× the appender at flat/1M; full figures §7.2) and the
 **loudest** — unsupported types are rejected at `register_table`, whereas appender
 failures are silent and misalign data (§5.1.2).
 
@@ -1583,7 +1611,7 @@ overrides them.
 | §3a / gotcha 12 — appender VARCHAR→ENUM cast, *Inferred* | **Measured true.** The important half is new: invalid and wrong-case labels are silently lost, and a failed cell misaligns later columns (§5.1.2) |
 | §5 — appender flush participates in the transaction, *Inferred* | **Measured true for flushed rows.** New: buffered rows escape the transaction and can leak after a rollback at GC time (§5.1.3) |
 | §3c — registered-table failure "occurs at query bind time, not at registration" | **Wrong.** The throw comes out of `register_table` itself (§4.2) |
-| Implication 4 — "prefer the **Appender** per table (docs-verified fastest)" | **Contradicted.** `register` is 3.4× faster at flat/1M with 538× fewer allocations, and wins at every scale at 1 thread (§7.2, §8.1) |
+| Implication 4 — "prefer the **Appender** per table (docs-verified fastest)" | **Contradicted.** `register` is 3.6× faster at flat/1M with 538× fewer allocations, and wins at every scale at 1 thread (§7.2, §8.1) |
 | §4 — registered scan is "multi-threaded", implying threads help | Raising Julia's thread count **hurt** this path worst (flat 1M: 58.1 → 111.2 ms) (§7.4) |
 | Gotcha 8 — "empty Julia vector appends/**binds** as NULL" | Half wrong: that is the appender's behaviour. Prepared bind writes a real empty list (§5.1.5) |
 | Gotcha 10 — registered tables support "only flat primitive/decimal columns" | True of Julia eltypes, but a `String` column inserts into an **ENUM** column via cast, so ENUM tables stay in tier 1 (§4.1) |

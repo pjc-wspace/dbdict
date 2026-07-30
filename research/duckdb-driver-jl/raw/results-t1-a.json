@@ -6,12 +6,12 @@
       "scale": 10000,
       "path": "appender",
       "status": "ok",
-      "median_ns": 2.0852245e6,
-      "min_ns": 1.971254e6,
-      "samples": 2080,
+      "median_ns": 2.1158435e6,
+      "min_ns": 1.957181e6,
+      "samples": 2010,
       "allocs": 76936,
       "memory_bytes": 1230976,
-      "rows_per_sec": 4.795646703748206e6
+      "rows_per_sec": 4.726247475297677e6
     },
     {
       "kind": "write",
@@ -19,12 +19,12 @@
       "scale": 10000,
       "path": "register",
       "status": "ok",
-      "median_ns": 1.021632e6,
-      "min_ns": 942195.0,
-      "samples": 4186,
+      "median_ns": 1.014976e6,
+      "min_ns": 935434.0,
+      "samples": 4239,
       "allocs": 329,
       "memory_bytes": 10288,
-      "rows_per_sec": 9.78826035206415e6
+      "rows_per_sec": 9.852449713096665e6
     },
     {
       "kind": "write",
@@ -40,12 +40,12 @@
       "scale": 10000,
       "path": "literal",
       "status": "ok",
-      "median_ns": 1.61456773e8,
-      "min_ns": 1.42187287e8,
-      "samples": 29,
+      "median_ns": 1.64451001e8,
+      "min_ns": 1.52673967e8,
+      "samples": 28,
       "allocs": 159285,
       "memory_bytes": 9447328,
-      "rows_per_sec": 61936.082421268264
+      "rows_per_sec": 60808.386322926664
     },
     {
       "kind": "write",
@@ -53,12 +53,12 @@
       "scale": 10000,
       "path": "appender",
       "status": "ok",
-      "median_ns": 1.2521052e7,
-      "min_ns": 1.1681133e7,
-      "samples": 369,
+      "median_ns": 1.1770093e7,
+      "min_ns": 9.775056e6,
+      "samples": 403,
       "allocs": 196541,
       "memory_bytes": 6298064,
-      "rows_per_sec": 798654.9373007956
+      "rows_per_sec": 849610.9588938677
     },
     {
       "kind": "write",
@@ -82,12 +82,12 @@
       "scale": 10000,
       "path": "literal",
       "status": "ok",
-      "median_ns": 1.52389381e8,
-      "min_ns": 1.41352076e8,
+      "median_ns": 1.51012079e8,
+      "min_ns": 1.36735715e8,
       "samples": 31,
       "allocs": 238890,
       "memory_bytes": 10199648,
-      "rows_per_sec": 65621.37029744875
+      "rows_per_sec": 66219.86841198313
     },
     {
       "kind": "write",
@@ -111,12 +111,12 @@
       "scale": 10000,
       "path": "register_flat",
       "status": "ok",
-      "median_ns": 724742.0,
-      "min_ns": 683729.0,
-      "samples": 4865,
+      "median_ns": 727656.0,
+      "min_ns": 689798.0,
+      "samples": 4851,
       "allocs": 234,
       "memory_bytes": 167088,
-      "rows_per_sec": 1.3798013637956679e7
+      "rows_per_sec": 1.3742757566762315e7
     },
     {
       "kind": "write",
@@ -124,12 +124,12 @@
       "scale": 10000,
       "path": "literal",
       "status": "ok",
-      "median_ns": 1.0014886e8,
-      "min_ns": 9.3181555e7,
-      "samples": 44,
+      "median_ns": 9.6754934e7,
+      "min_ns": 8.8932543e7,
+      "samples": 45,
       "allocs": 220351,
       "memory_bytes": 18309888,
-      "rows_per_sec": 99851.36126362297
+      "rows_per_sec": 103353.90234465976
     },
     {
       "kind": "write",
@@ -161,12 +161,12 @@
       "scale": 10000,
       "path": "literal",
       "status": "ok",
-      "median_ns": 1.002216465e8,
-      "min_ns": 8.8039414e7,
+      "median_ns": 1.009866815e8,
+      "min_ns": 8.6941881e7,
       "samples": 48,
       "allocs": 179611,
       "memory_bytes": 6474416,
-      "rows_per_sec": 99778.84368523122
+      "rows_per_sec": 99022.95878491661
     },
     {
       "kind": "write",
@@ -174,12 +174,12 @@
       "scale": 100000,
       "path": "appender",
       "status": "ok",
-      "median_ns": 1.9806946e7,
-      "min_ns": 1.8169148e7,
-      "samples": 246,
+      "median_ns": 2.0010385e7,
+      "min_ns": 1.849971e7,
+      "samples": 241,
       "allocs": 796936,
       "memory_bytes": 12750976,
-      "rows_per_sec": 5.048733913850223e6
+      "rows_per_sec": 4.997405097403173e6
     },
     {
       "kind": "write",
@@ -187,12 +187,12 @@
       "scale": 100000,
       "path": "register",
       "status": "ok",
-      "median_ns": 5.901836e6,
-      "min_ns": 5.536334e6,
-      "samples": 817,
+      "median_ns": 5.962701e6,
+      "min_ns": 5.593634e6,
+      "samples": 805,
       "allocs": 1649,
       "memory_bytes": 44784,
-      "rows_per_sec": 1.694387983671522e7
+      "rows_per_sec": 1.6770923110181108e7
     },
     {
       "kind": "write",
@@ -208,12 +208,12 @@
       "scale": 100000,
       "path": "literal",
       "status": "ok",
-      "median_ns": 1.680121499e9,
-      "min_ns": 1.502353718e9,
+      "median_ns": 1.6285209605e9,
+      "min_ns": 1.609513783e9,
       "samples": 4,
       "allocs": 1620435,
       "memory_bytes": 94919712,
-      "rows_per_sec": 59519.50502360663
+      "rows_per_sec": 61405.41167446644
     },
     {
       "kind": "write",
@@ -221,12 +221,12 @@
       "scale": 100000,
       "path": "appender",
       "status": "ok",
-      "median_ns": 1.17108307e8,
-      "min_ns": 1.10374575e8,
-      "samples": 43,
+      "median_ns": 1.14628394e8,
+      "min_ns": 1.08137122e8,
+      "samples": 44,
       "allocs": 1988096,
       "memory_bytes": 63337232,
-      "rows_per_sec": 853910.3891238049
+      "rows_per_sec": 872384.2017711598
     },
     {
       "kind": "write",
@@ -250,12 +250,12 @@
       "scale": 100000,
       "path": "literal",
       "status": "ok",
-      "median_ns": 1.6449123e9,
-      "min_ns": 1.584236576e9,
-      "samples": 4,
+      "median_ns": 1.716506391e9,
+      "min_ns": 1.594366552e9,
+      "samples": 3,
       "allocs": 2411595,
       "memory_bytes": 102365312,
-      "rows_per_sec": 60793.514645127274
+      "rows_per_sec": 58257.8663990538
     },
     {
       "kind": "write",
@@ -279,12 +279,12 @@
       "scale": 100000,
       "path": "register_flat",
       "status": "ok",
-      "median_ns": 2.972341e6,
-      "min_ns": 2.741957e6,
-      "samples": 1064,
+      "median_ns": 2.978551e6,
+      "min_ns": 2.763426e6,
+      "samples": 1080,
       "allocs": 1114,
       "memory_bytes": 1630320,
-      "rows_per_sec": 3.364351533017241e7
+      "rows_per_sec": 3.357337175022352e7
     },
     {
       "kind": "write",
@@ -292,12 +292,12 @@
       "scale": 100000,
       "path": "literal",
       "status": "ok",
-      "median_ns": 1.038691211e9,
-      "min_ns": 1.009234314e9,
+      "median_ns": 1.02460101e9,
+      "min_ns": 9.83813613e8,
       "samples": 5,
       "allocs": 2203501,
       "memory_bytes": 183061584,
-      "rows_per_sec": 96275.00352460382
+      "rows_per_sec": 97598.96684076077
     },
     {
       "kind": "write",
@@ -329,12 +329,12 @@
       "scale": 100000,
       "path": "literal",
       "status": "ok",
-      "median_ns": 1.015160446e9,
-      "min_ns": 9.25954752e8,
+      "median_ns": 1.007342592e9,
+      "min_ns": 9.76715481e8,
       "samples": 5,
       "allocs": 1803261,
       "memory_bytes": 65018272,
-      "rows_per_sec": 98506.59606964236
+      "rows_per_sec": 99271.09286767851
     },
     {
       "kind": "write",
@@ -342,12 +342,12 @@
       "scale": 1000000,
       "path": "appender",
       "status": "ok",
-      "median_ns": 1.961022875e8,
-      "min_ns": 1.87551973e8,
-      "samples": 26,
+      "median_ns": 2.05276827e8,
+      "min_ns": 1.92556106e8,
+      "samples": 25,
       "allocs": 7996936,
       "memory_bytes": 127950976,
-      "rows_per_sec": 5.099379577609465e6
+      "rows_per_sec": 4.871470465587429e6
     },
     {
       "kind": "write",
@@ -355,12 +355,12 @@
       "scale": 1000000,
       "path": "register",
       "status": "ok",
-      "median_ns": 5.7766165e7,
-      "min_ns": 5.6523667e7,
+      "median_ns": 5.73393505e7,
+      "min_ns": 5.5834743e7,
       "samples": 86,
       "allocs": 14853,
       "memory_bytes": 389808,
-      "rows_per_sec": 1.731117168674777e7
+      "rows_per_sec": 1.7440030123815235e7
     },
     {
       "kind": "write",
@@ -376,12 +376,12 @@
       "scale": 1000000,
       "path": "literal",
       "status": "ok",
-      "median_ns": 1.8064892382e10,
-      "min_ns": 1.8064892382e10,
+      "median_ns": 1.81746497e10,
+      "min_ns": 1.81746497e10,
       "samples": 1,
       "allocs": 16231935,
       "memory_bytes": 949562336,
-      "rows_per_sec": 55355.989886571806
+      "rows_per_sec": 55021.69321040614
     },
     {
       "kind": "write",
@@ -389,12 +389,12 @@
       "scale": 1000000,
       "path": "appender",
       "status": "ok",
-      "median_ns": 1.5239145455e9,
-      "min_ns": 1.422213705e9,
+      "median_ns": 1.468602112e9,
+      "min_ns": 1.375063364e9,
       "samples": 4,
       "allocs": 19908576,
       "memory_bytes": 633937840,
-      "rows_per_sec": 656204.7740491233
+      "rows_per_sec": 680919.6254240441
     },
     {
       "kind": "write",
@@ -418,12 +418,12 @@
       "scale": 1000000,
       "path": "literal",
       "status": "ok",
-      "median_ns": 1.794499198e10,
-      "min_ns": 1.794499198e10,
+      "median_ns": 1.8889004416e10,
+      "min_ns": 1.8889004416e10,
       "samples": 1,
       "allocs": 24143575,
       "memory_bytes": 1024125920,
-      "rows_per_sec": 55725.85382676777
+      "rows_per_sec": 52940.852676859264
     },
     {
       "kind": "write",
@@ -447,12 +447,12 @@
       "scale": 1000000,
       "path": "register_flat",
       "status": "ok",
-      "median_ns": 2.8136151e7,
-      "min_ns": 2.687748e7,
-      "samples": 115,
+      "median_ns": 2.8911416e7,
+      "min_ns": 2.6925297e7,
+      "samples": 110,
       "allocs": 9918,
       "memory_bytes": 16262704,
-      "rows_per_sec": 3.554146407587875e7
+      "rows_per_sec": 3.4588413102976345e7
     },
     {
       "kind": "write",
@@ -460,12 +460,12 @@
       "scale": 1000000,
       "path": "literal",
       "status": "ok",
-      "median_ns": 1.1918566797e10,
-      "min_ns": 1.1918566797e10,
+      "median_ns": 1.1752716715e10,
+      "min_ns": 1.1752716715e10,
       "samples": 1,
       "allocs": 22035001,
       "memory_bytes": 1830796848,
-      "rows_per_sec": 83902.70550413059
+      "rows_per_sec": 85086.71009858507
     },
     {
       "kind": "write",
@@ -497,12 +497,12 @@
       "scale": 1000000,
       "path": "literal",
       "status": "ok",
-      "median_ns": 1.063095902e10,
-      "min_ns": 1.063095902e10,
+      "median_ns": 1.0936572086e10,
+      "min_ns": 1.0936572086e10,
       "samples": 1,
       "allocs": 18036089,
       "memory_bytes": 650347312,
-      "rows_per_sec": 94064.89086438036
+      "rows_per_sec": 91436.32869024003
     },
     {
       "kind": "read",
@@ -510,12 +510,12 @@
       "scale": 10000,
       "path": "materialized",
       "status": "ok",
-      "median_ns": 403649.5,
-      "min_ns": 348695.0,
-      "samples": 5040,
+      "median_ns": 385937.0,
+      "min_ns": 346501.0,
+      "samples": 5256,
       "allocs": 10268,
       "memory_bytes": 617800,
-      "rows_per_sec": 2.4773968504853837e7
+      "rows_per_sec": 2.5910964742950276e7
     },
     {
       "kind": "read",
@@ -523,12 +523,12 @@
       "scale": 10000,
       "path": "streaming",
       "status": "ok",
-      "median_ns": 354994.5,
-      "min_ns": 315203.0,
+      "median_ns": 360102.0,
+      "min_ns": 323886.0,
       "samples": 10000,
       "allocs": 10452,
       "memory_bytes": 621552,
-      "rows_per_sec": 2.8169450512613576e7
+      "rows_per_sec": 2.776990963671404e7
     },
     {
       "kind": "read",
@@ -536,8 +536,8 @@
       "scale": 10000,
       "path": "stream_first",
       "status": "ok",
-      "median_ns": 226998.0,
-      "min_ns": 212536.0,
+      "median_ns": 228380.0,
+      "min_ns": 211133.0,
       "samples": 10000,
       "allocs": 2161,
       "memory_bytes": 127880,
@@ -549,12 +549,12 @@
       "scale": 10000,
       "path": "materialized",
       "status": "ok",
-      "median_ns": 1.304051e6,
-      "min_ns": 1.183116e6,
-      "samples": 2551,
+      "median_ns": 1.300724e6,
+      "min_ns": 1.190635e6,
+      "samples": 2633,
       "allocs": 30225,
       "memory_bytes": 1006832,
-      "rows_per_sec": 7.668411741565322e6
+      "rows_per_sec": 7.688026053182689e6
     },
     {
       "kind": "read",
@@ -562,12 +562,12 @@
       "scale": 10000,
       "path": "streaming",
       "status": "ok",
-      "median_ns": 1.226322e6,
-      "min_ns": 1.15972e6,
-      "samples": 3665,
+      "median_ns": 1.2250935e6,
+      "min_ns": 1.156293e6,
+      "samples": 3722,
       "allocs": 30367,
       "memory_bytes": 1009536,
-      "rows_per_sec": 8.154465140476971e6
+      "rows_per_sec": 8.162642279956591e6
     },
     {
       "kind": "read",
@@ -575,8 +575,8 @@
       "scale": 10000,
       "path": "stream_first",
       "status": "ok",
-      "median_ns": 402747.5,
-      "min_ns": 380123.0,
+      "median_ns": 401651.0,
+      "min_ns": 380173.0,
       "samples": 10000,
       "allocs": 6235,
       "memory_bytes": 207296,
@@ -588,12 +588,12 @@
       "scale": 10000,
       "path": "materialized",
       "status": "ok",
-      "median_ns": 7.8382165e6,
-      "min_ns": 7.407917e6,
-      "samples": 540,
+      "median_ns": 7.816793e6,
+      "min_ns": 7.279038e6,
+      "samples": 545,
       "allocs": 120945,
       "memory_bytes": 3864560,
-      "rows_per_sec": 1.2758004324070406e6
+      "rows_per_sec": 1.279297021169679e6
     },
     {
       "kind": "read",
@@ -601,12 +601,12 @@
       "scale": 10000,
       "path": "streaming",
       "status": "ok",
-      "median_ns": 7.849684e6,
-      "min_ns": 7.324809e6,
-      "samples": 597,
+      "median_ns": 7.693674e6,
+      "min_ns": 7.367425e6,
+      "samples": 611,
       "allocs": 121153,
       "memory_bytes": 3869856,
-      "rows_per_sec": 1.2739366323536083e6
+      "rows_per_sec": 1.29976913500624e6
     },
     {
       "kind": "read",
@@ -614,9 +614,9 @@
       "scale": 10000,
       "path": "stream_first",
       "status": "ok",
-      "median_ns": 1.687199e6,
-      "min_ns": 1.613415e6,
-      "samples": 2758,
+      "median_ns": 1.657325e6,
+      "min_ns": 1.603218e6,
+      "samples": 2844,
       "allocs": 24873,
       "memory_bytes": 793712,
       "rows_per_sec": null
@@ -627,12 +627,12 @@
       "scale": 10000,
       "path": "materialized",
       "status": "ok",
-      "median_ns": 659051.0,
-      "min_ns": 523454.0,
-      "samples": 3721,
+      "median_ns": 639029.0,
+      "min_ns": 538045.0,
+      "samples": 3819,
       "allocs": 30490,
       "memory_bytes": 1341816,
-      "rows_per_sec": 1.517333256455115e7
+      "rows_per_sec": 1.564874207586823e7
     },
     {
       "kind": "read",
@@ -640,12 +640,12 @@
       "scale": 10000,
       "path": "streaming",
       "status": "ok",
-      "median_ns": 630498.0,
-      "min_ns": 562864.0,
-      "samples": 5995,
+      "median_ns": 583043.5,
+      "min_ns": 536162.0,
+      "samples": 6480,
       "allocs": 30606,
       "memory_bytes": 1343720,
-      "rows_per_sec": 1.5860478542358581e7
+      "rows_per_sec": 1.7151378927987363e7
     },
     {
       "kind": "read",
@@ -653,8 +653,8 @@
       "scale": 10000,
       "path": "stream_first",
       "status": "ok",
-      "median_ns": 287601.0,
-      "min_ns": 254811.0,
+      "median_ns": 276188.5,
+      "min_ns": 250584.0,
       "samples": 10000,
       "allocs": 6278,
       "memory_bytes": 275928,
@@ -666,12 +666,12 @@
       "scale": 100000,
       "path": "materialized",
       "status": "ok",
-      "median_ns": 3.125736e6,
-      "min_ns": 2.444711e6,
-      "samples": 728,
+      "median_ns": 3.0555595e6,
+      "min_ns": 2.313887e6,
+      "samples": 738,
       "allocs": 101634,
       "memory_bytes": 6143048,
-      "rows_per_sec": 3.1992465134611495e7
+      "rows_per_sec": 3.272723047939338e7
     },
     {
       "kind": "read",
@@ -679,12 +679,12 @@
       "scale": 100000,
       "path": "streaming",
       "status": "ok",
-      "median_ns": 2.76334e6,
-      "min_ns": 2.185062e6,
-      "samples": 1380,
+      "median_ns": 2.807013e6,
+      "min_ns": 2.29619e6,
+      "samples": 1351,
       "allocs": 104104,
-      "memory_bytes": 6201488,
-      "rows_per_sec": 3.6188091222940356e7
+      "memory_bytes": 6201520,
+      "rows_per_sec": 3.56250576680621e7
     },
     {
       "kind": "read",
@@ -692,8 +692,8 @@
       "scale": 100000,
       "path": "stream_first",
       "status": "ok",
-      "median_ns": 363547.0,
-      "min_ns": 339201.0,
+      "median_ns": 356015.5,
+      "min_ns": 335625.0,
       "samples": 10000,
       "allocs": 2161,
       "memory_bytes": 127880,
@@ -705,12 +705,12 @@
       "scale": 100000,
       "path": "materialized",
       "status": "ok",
-      "median_ns": 1.23453065e7,
-      "min_ns": 1.1381193e7,
-      "samples": 260,
+      "median_ns": 1.19837615e7,
+      "min_ns": 1.1202644e7,
+      "samples": 266,
       "allocs": 301371,
       "memory_bytes": 10037168,
-      "rows_per_sec": 8.100244412724787e6
+      "rows_per_sec": 8.344625349895356e6
     },
     {
       "kind": "read",
@@ -718,12 +718,12 @@
       "scale": 100000,
       "path": "streaming",
       "status": "ok",
-      "median_ns": 1.19127435e7,
-      "min_ns": 1.0946776e7,
-      "samples": 386,
+      "median_ns": 1.1662644e7,
+      "min_ns": 1.0812595e7,
+      "samples": 392,
       "allocs": 303315,
-      "memory_bytes": 10084512,
-      "rows_per_sec": 8.394371959742103e6
+      "memory_bytes": 10084672,
+      "rows_per_sec": 8.574385019383255e6
     },
     {
       "kind": "read",
@@ -731,9 +731,9 @@
       "scale": 100000,
       "path": "stream_first",
       "status": "ok",
-      "median_ns": 503327.0,
-      "min_ns": 478193.0,
-      "samples": 9228,
+      "median_ns": 513467.0,
+      "min_ns": 476850.0,
+      "samples": 8935,
       "allocs": 6235,
       "memory_bytes": 207296,
       "rows_per_sec": null
@@ -744,12 +744,12 @@
       "scale": 100000,
       "path": "materialized",
       "status": "ok",
-      "median_ns": 7.6304597e7,
-      "min_ns": 7.2954917e7,
-      "samples": 55,
+      "median_ns": 7.62088725e7,
+      "min_ns": 7.205585e7,
+      "samples": 56,
       "allocs": 1210295,
-      "memory_bytes": 38632912,
-      "rows_per_sec": 1.3105370309471656e6
+      "memory_bytes": 38632816,
+      "rows_per_sec": 1.312183171322998e6
     },
     {
       "kind": "read",
@@ -757,12 +757,12 @@
       "scale": 100000,
       "path": "streaming",
       "status": "ok",
-      "median_ns": 7.980594e7,
-      "min_ns": 7.3016882e7,
-      "samples": 63,
+      "median_ns": 8.0284375e7,
+      "min_ns": 7.2949671e7,
+      "samples": 62,
       "allocs": 1213009,
-      "memory_bytes": 38710624,
-      "rows_per_sec": 1.253039560714403e6
+      "memory_bytes": 38710688,
+      "rows_per_sec": 1.245572379432486e6
     },
     {
       "kind": "read",
@@ -770,9 +770,9 @@
       "scale": 100000,
       "path": "stream_first",
       "status": "ok",
-      "median_ns": 1.775304e6,
-      "min_ns": 1.662461e6,
-      "samples": 2603,
+      "median_ns": 1.831017e6,
+      "min_ns": 1.704783e6,
+      "samples": 2523,
       "allocs": 24873,
       "memory_bytes": 793712,
       "rows_per_sec": null
@@ -783,12 +783,12 @@
       "scale": 100000,
       "path": "materialized",
       "status": "ok",
-      "median_ns": 5.718915e6,
-      "min_ns": 4.520036e6,
-      "samples": 397,
+      "median_ns": 5.860784e6,
+      "min_ns": 4.471576e6,
+      "samples": 369,
       "allocs": 304100,
       "memory_bytes": 13415272,
-      "rows_per_sec": 1.748583428849703e7
+      "rows_per_sec": 1.7062563643362388e7
     },
     {
       "kind": "read",
@@ -796,12 +796,12 @@
       "scale": 100000,
       "path": "streaming",
       "status": "ok",
-      "median_ns": 5.7577495e6,
-      "min_ns": 5.124934e6,
-      "samples": 650,
+      "median_ns": 5.532791e6,
+      "min_ns": 4.92456e6,
+      "samples": 671,
       "allocs": 305710,
-      "memory_bytes": 13452056,
-      "rows_per_sec": 1.736789695348851e7
+      "memory_bytes": 13451928,
+      "rows_per_sec": 1.8074060632328242e7
     },
     {
       "kind": "read",
@@ -809,9 +809,9 @@
       "scale": 100000,
       "path": "stream_first",
       "status": "ok",
-      "median_ns": 472775.0,
-      "min_ns": 427676.0,
-      "samples": 9634,
+      "median_ns": 459685.0,
+      "min_ns": 421997.0,
+      "samples": 9969,
       "allocs": 6278,
       "memory_bytes": 275928,
       "rows_per_sec": null
@@ -822,12 +822,12 @@
       "scale": 1000000,
       "path": "materialized",
       "status": "ok",
-      "median_ns": 3.2852466e7,
-      "min_ns": 2.8397582e7,
-      "samples": 71,
+      "median_ns": 3.22248905e7,
+      "min_ns": 2.7721186e7,
+      "samples": 70,
       "allocs": 1015271,
       "memory_bytes": 61385184,
-      "rows_per_sec": 3.0439115285896655e7
+      "rows_per_sec": 3.1031913048703767e7
     },
     {
       "kind": "read",
@@ -835,12 +835,12 @@
       "scale": 1000000,
       "path": "streaming",
       "status": "ok",
-      "median_ns": 4.44018875e7,
-      "min_ns": 2.3653362e7,
+      "median_ns": 4.42641015e7,
+      "min_ns": 2.1850446e7,
       "samples": 110,
       "allocs": 1040619,
-      "memory_bytes": 62010848,
-      "rows_per_sec": 2.252156510238444e7
+      "memory_bytes": 62009504,
+      "rows_per_sec": 2.259167058886308e7
     },
     {
       "kind": "read",
@@ -848,8 +848,8 @@
       "scale": 1000000,
       "path": "stream_first",
       "status": "ok",
-      "median_ns": 364605.0,
-      "min_ns": 338670.0,
+      "median_ns": 377498.5,
+      "min_ns": 336176.0,
       "samples": 10000,
       "allocs": 2161,
       "memory_bytes": 127880,
@@ -861,12 +861,12 @@
       "scale": 1000000,
       "path": "materialized",
       "status": "ok",
-      "median_ns": 1.84784261e8,
-      "min_ns": 1.1565239e8,
+      "median_ns": 1.80818522e8,
+      "min_ns": 1.15696161e8,
       "samples": 23,
       "allocs": 3012799,
       "memory_bytes": 100329912,
-      "rows_per_sec": 5.411716314951737e6
+      "rows_per_sec": 5.530406890506493e6
     },
     {
       "kind": "read",
@@ -874,12 +874,12 @@
       "scale": 1000000,
       "path": "streaming",
       "status": "ok",
-      "median_ns": 1.52935109e8,
-      "min_ns": 1.14493311e8,
-      "samples": 34,
+      "median_ns": 1.46401481e8,
+      "min_ns": 1.18275756e8,
+      "samples": 35,
       "allocs": 3032905,
-      "memory_bytes": 100847488,
-      "rows_per_sec": 6.538720942095774e6
+      "memory_bytes": 100848480,
+      "rows_per_sec": 6.830531994413363e6
     },
     {
       "kind": "read",
@@ -887,9 +887,9 @@
       "scale": 1000000,
       "path": "stream_first",
       "status": "ok",
-      "median_ns": 517554.0,
-      "min_ns": 481659.0,
-      "samples": 8507,
+      "median_ns": 529176.0,
+      "min_ns": 480086.0,
+      "samples": 8322,
       "allocs": 6235,
       "memory_bytes": 207296,
       "rows_per_sec": null
@@ -900,12 +900,12 @@
       "scale": 1000000,
       "path": "materialized",
       "status": "ok",
-      "median_ns": 8.66963559e8,
-      "min_ns": 8.43039165e8,
+      "median_ns": 8.88251688e8,
+      "min_ns": 8.12230478e8,
       "samples": 6,
       "allocs": 12104666,
-      "memory_bytes": 386327880,
-      "rows_per_sec": 1.153451018348973e6
+      "memory_bytes": 386326696,
+      "rows_per_sec": 1.1258070358994915e6
     },
     {
       "kind": "read",
@@ -913,12 +913,12 @@
       "scale": 1000000,
       "path": "streaming",
       "status": "ok",
-      "median_ns": 8.737809445e8,
-      "min_ns": 8.41233826e8,
+      "median_ns": 8.68812638e8,
+      "min_ns": 8.33613368e8,
       "samples": 6,
-      "allocs": 12132745,
-      "memory_bytes": 387140784,
-      "rows_per_sec": 1.1444516000199865e6
+      "allocs": 12132747,
+      "memory_bytes": 387141280,
+      "rows_per_sec": 1.150996148377851e6
     },
     {
       "kind": "read",
@@ -926,9 +926,9 @@
       "scale": 1000000,
       "path": "stream_first",
       "status": "ok",
-      "median_ns": 1.806342e6,
-      "min_ns": 1.678606e6,
-      "samples": 2419,
+      "median_ns": 1.843426e6,
+      "min_ns": 1.687407e6,
+      "samples": 2441,
       "allocs": 24873,
       "memory_bytes": 793712,
       "rows_per_sec": null
@@ -939,12 +939,12 @@
       "scale": 1000000,
       "path": "materialized",
       "status": "ok",
-      "median_ns": 5.695608e7,
-      "min_ns": 4.745378e7,
-      "samples": 39,
+      "median_ns": 5.7091941e7,
+      "min_ns": 4.6795616e7,
+      "samples": 40,
       "allocs": 3040181,
-      "memory_bytes": 134106464,
-      "rows_per_sec": 1.7557388078673955e7
+      "memory_bytes": 134107328,
+      "rows_per_sec": 1.7515606975072015e7
     },
     {
       "kind": "read",
@@ -952,12 +952,12 @@
       "scale": 1000000,
       "path": "streaming",
       "status": "ok",
-      "median_ns": 6.39653745e7,
-      "min_ns": 5.9629712e7,
+      "median_ns": 6.43973555e7,
+      "min_ns": 5.6931074e7,
       "samples": 72,
       "allocs": 3056855,
-      "memory_bytes": 134511976,
-      "rows_per_sec": 1.563345806722354e7
+      "memory_bytes": 134512040,
+      "rows_per_sec": 1.5528587971287113e7
     },
     {
       "kind": "read",
@@ -965,9 +965,9 @@
       "scale": 1000000,
       "path": "stream_first",
       "status": "ok",
-      "median_ns": 495240.0,
-      "min_ns": 443781.0,
-      "samples": 9210,
+      "median_ns": 489004.5,
+      "min_ns": 445592.0,
+      "samples": 9338,
       "allocs": 6278,
       "memory_bytes": 275928,
       "rows_per_sec": null

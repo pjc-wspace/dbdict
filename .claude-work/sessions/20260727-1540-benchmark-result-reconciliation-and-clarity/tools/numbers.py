@@ -358,12 +358,24 @@ def extract_ratios(lines, start, end, collapsed, claims, doc_end):
   memory = app["memory_bytes"] / reg["memory_bytes"]
   litratio = lit["median_ns"] / reg["median_ns"]
 
-  # scan the whole document: §1, §8.1 and appendix A restate these
+  # scan the whole document: §1, §8.1 and appendix A restate these.
+  #
+  # the numeric slot is matched generically and the claim is identified by the
+  # words around it. the earlier version hardcoded the claimed value (r"3\.4×"),
+  # which meant that *correcting* a number made the checker stop FINDING the
+  # claim instead of re-checking it: coverage silently fell and the run still
+  # reported clean. --selftest cannot catch that, because mutation only perturbs
+  # claims the checker already found — it says nothing about claims that
+  # disappeared. the coverage-count-unchanged criterion is what caught it.
   patterns = [
-    (r"\*\*3\.4×\*\*|3\.4×", speedup, "register vs appender speedup at flat/1M"),
-    (r"\*\*538×\*\*|538×", allocs, "allocation ratio at flat/1M"),
-    (r"\*\*328×\*\*|328×", memory, "memory ratio at flat/1M"),
-    (r"304×", litratio, "literal vs register at flat/1M"),
+    (r"[\d.]+×(?:\*\*)?\s*(?:faster|the appender)", speedup,
+     "register vs appender speedup at flat/1M"),
+    (r"[\d.]+×(?:\*\*)?\s*(?:fewer allocations|less \()", allocs,
+     "allocation ratio at flat/1M"),
+    (r"[\d.]+×(?:\*\*)?\s*less memory", memory,
+     "memory ratio at flat/1M"),
+    (r"[\d.]+×(?:\*\*)?\s*slower than", litratio,
+     "literal vs register at flat/1M"),
   ]
   for n in range(1, doc_end):
     line = lines[n - 1]
