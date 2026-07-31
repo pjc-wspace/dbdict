@@ -39,7 +39,7 @@ Evidence the shift already happened without being written down:
 
 1. A canonical direction document exists at
    `docs/vision-direction-0.3.0.md`, covering: positioning, the two entry
-   points, the two-axis model, the invariants, the lingua-franca type
+   points, the two-axis model, the invariants, the dbdict type
    vocabulary, the `attrdef:` design, the `languages:` design, the
    metadata-propagation story, and the V1 command surface (including the
    brown-field `draft` command).
@@ -47,16 +47,20 @@ Evidence the shift already happened without being written down:
    (plus any existing direction/vision content) are archived under
    `docs/v0.2.0/`, and a git tag `v0.2.0` is created at the last commit before
    the direction change (`ab468fa` at time of writing).
-3. The V1 type set is written down using both its lingua-franca spellings and
-   its DuckDB equivalents, with a citation for the DuckDB names and a stated
-   rationale for what is in and out.
+3. The V1 type set is written down using both its dbdict-type spellings and
+   its DuckDB equivalents, with a citation for the DuckDB names, a **stated bit
+   layout per type**, and a rationale for what is in and out.
 4. A per-target capability matrix exists covering **all five targets**
    (`duckdb`, `ducklake`, `postgres`, `sqlite`, `hdf5`), in which every cell is
    either resolved with a citation, or marked `unknown — needs probe X` with
    the probe named. No blank cells.
-5. The **four HDF5 encoding conventions** (`date`, `timestamp`, `timestamptz`,
-   `decimal(p,s)`) are either decided and written down, or recorded as open
-   with the specific probe that would settle each one.
+5. ~~The **four HDF5 encoding conventions** (`date`, `timestamp`,
+   `timestamptz`, `decimal(p,s)`)~~ — **REVISED IN PHASE 2: three encoding
+   conventions** (`bool`, `date`, `timestamp`), shared by **both** SQLite and
+   HDF5 rather than HDF5 alone. `decimal(p,s)` moved to V2+ and `timestamptz`
+   was removed, so two of the original four no longer exist. Each is decided
+   and written down, or recorded as open with the specific probe that would
+   settle it.
 6. The **in-process guarantee** is restated honestly per target. CLAUDE.md
    currently promises *"everything runs in-process; no runtime `duckdb` on
    PATH is needed by the library, the CLI, or the tests"* — Postgres breaks
@@ -159,7 +163,7 @@ come from it. Brown-field is documenting a database that already has data.
 - **`DDL` generation** and **`client code gen`** — both are target "add-ins",
   selected by target database and target code language.
 - **type mappings live in Rust source**, not in user files. They can be
-  *emitted* as YAML from either perspective — (1) keys are dbdict LF types,
+  *emitted* as YAML from either perspective — (1) keys are dbdict types,
   (2) keys are the target database's types.
 
 > Emitting the mapping in both directions is the `resolve` command
@@ -177,7 +181,7 @@ later.
 
 | axis | contents |
 |---|---|
-| **1 — target database**, named by `source:` | `duckdb` · `ducklake` · `postgres` · `sqlite` · `hdf5` |
+| **1 — target database**, named by `source:` | **V1:** `duckdb` · `ducklake` · `sqlite` · `hdf5` — **V2:** ~~`postgres`~~ |
 | **2 — driver per (target × language)**, named in `languages:` | DuckDB → DuckDB.jl · QuackIO.jl · duckdb-py · duckdb-rs 〜 HDF5 → JLD2.jl · HDF5.jl · h5py · hdf5-rs 〜 **Quack** = DuckDB remote access mode |
 
 **Why five targets — and why this is *not* "DuckDB-first with an escape
@@ -193,15 +197,32 @@ hatch":**
 > being sought.
 >
 > So multi-backend is **insurance, not aspiration** — and it is also why the
-> lingua franca exists. A tool welded to one backend is only as good as that
-> backend's weakest driver.
+> dbdict type vocabulary exists. A tool welded to one backend is only as good
+> as that backend's weakest driver.
 
-> **Marginal cost is not uniform.** Additional *SQL* targets are nearly free
-> once the lingua franca exists: they consume generated DDL, they have
-> `COMMENT ON`, and the only per-target work is a type-mapping table. HDF5 is
-> the expensive one precisely because it is not SQL — no DDL, no comment
-> facility, no date or decimal types. Expect
-> `duckdb → ducklake → postgres → sqlite` ≈ flat, then a step up to `hdf5`.
+> **Marginal cost is not uniform. ~~Expect `duckdb → ducklake → postgres →
+> sqlite` ≈ flat, then a step up to `hdf5`.~~** — **CORRECTED IN PHASE 2, and
+> the original prediction was wrong.** SQLite is *affinity*-typed, not
+> declared-typed: it has five storage classes, no boolean, no date/time and no
+> decimal, one undifferentiated INTEGER width and an 8-byte-only REAL. It
+> therefore needs **the same encoding conventions as HDF5**, and is not a
+> near-free SQL target at all. The real shape is three tiers:
+>
+> - `duckdb ≈ ducklake` — native types, `COMMENT ON`, SQL constraint queries.
+>   (`postgres` sat here too, and was **deferred to V2** — it breaks the
+>   in-process guarantee and has no 1-byte integer, so `int8` widens to
+>   `smallint` and round-trip identity breaks for that one type.)
+> - **`sqlite`** — three encoding conventions, no `COMMENT ON` statement,
+>   widths unenforced. Still cheaper than HDF5: it keeps DDL, SQL constraint
+>   queries, and verbatim declared types via `PRAGMA table_info`.
+> - **`hdf5`** — the same three conventions *plus* no DDL, no comment
+>   statement, and no query engine for D01–D05.
+>
+> The convention count fell from four to **three** (`bool`, `date`,
+> `timestamp`) once `decimal` moved to V2+ and `timestamptz` was removed.
+>
+> Full evidence, with citations and probe output, in
+> `.claude-work/notes/20260731-1253-capability-matrix.md`.
 
 > **Postgres breaks the in-process guarantee.** DuckDB is bundled and SQLite
 > is embeddable, so both keep everything in-process. Postgres needs a running
@@ -262,7 +283,7 @@ Sourced findings that shaped the roster:
 
 ### `languages:` — named language targets
 
-The mapping from LF types to a language's types is **fully determined by the
+The mapping from dbdict types to a language's types is **fully determined by the
 (target database, driver) pair**. DuckDB.jl decides what a `BIGINT` arrives as
 in Julia; that is not a design choice dbdict gets to make. Consequence:
 **no language-specific mapping file is needed for V1** — naming the driver is
@@ -300,7 +321,7 @@ dbdict gen py     # python client, same dataspec, same store
 > spec is not language-free — it names language targets. It stays free of
 > *type mappings*, which is the property that actually mattered.
 
-### the lingua franca type vocabulary
+### the dbdict type vocabulary
 
 Multi-target × multi-language means the dataspec cannot be typed in any one
 system's types. Today's 0.2.0 types are DuckDB-spelled, which privileges
@@ -311,20 +332,57 @@ DuckDB and does not map cleanly.
 > `"number(ordinal)"`, `"number(quantity)"`, `"date"`, `"datetime"`,
 > `"number"`, `"number(id)"`, `"string"`, `"boolean"`) — portable but unable
 > to drive codegen. The fork replaced them with DuckDB-native types —
-> precise but bound to one target. The lingua franca is the missing third
+> precise but bound to one target. The dbdict type vocabulary is the missing third
 > option, and it works because 0.1.0 conflated two orthogonal things:
 > *physical storage* and *semantic role*. Split them and both problems go.
 
-**V1 vocabulary — 12 scalars, explicit-width lowercase:**
+> **REVISED IN PHASE 2 — the vocabulary is called "dbdict types", it has 10
+> members, and every member carries a bit layout.** Full record, with
+> reasoning: `.claude-work/notes/20260731-1552-dbdict-type-system-decisions.md`.
 
-| LF spelling | DuckDB equivalent | notes |
-|---|---|---|
-| `bool` | `BOOLEAN` | free everywhere |
-| `int8` `int16` `int32` `int64` | `TINYINT` `SMALLINT` `INTEGER` `BIGINT` | free everywhere |
-| `float32` `float64` | `FLOAT` `DOUBLE` | free everywhere |
-| `string` | `VARCHAR` | free everywhere |
-| `date` `timestamp` `timestamptz` | `DATE` `TIMESTAMP` `TIMESTAMP WITH TIME ZONE` | needs an HDF5 encoding + a library type per language |
-| `decimal(p,s)` | `DECIMAL(prec, scale)` | needs an HDF5 encoding + a library type per language |
+**V1 vocabulary — ~~12~~ 10 scalars.** Numeric and boolean types are defined by
+**bit layout**; temporal types by a **pinned RFC profile**. Both are exact and
+mechanically checkable:
+
+| dbdict type | definition | width | DuckDB equivalent |
+|---|---|---|---|
+| `bool` | `0` = false, `1` = true | 8 bits | `BOOLEAN` |
+| `int8` `int16` `int32` `int64` | two's complement, signed | 8/16/32/64 bits | `TINYINT` `SMALLINT` `INTEGER` `BIGINT` |
+| `float32` `float64` | IEEE 754 binary32 / binary64 | 32/64 bits | `FLOAT` `DOUBLE` |
+| `string` | UTF-8, unbounded | *variable* | `VARCHAR` |
+| `date` | **RFC 3339 `full-date`** — `YYYY-MM-DD`, no time, no zone | 10 bytes | `DATE` |
+| `timestamp` | **RFC 3339 `date-time`**, µs; optional **RFC 9557** `[Zone]` suffix | 27–61 bytes | `TIMESTAMP` / `TIMESTAMPTZ` |
+
+**Canonical vs physical.** The RFC form is the *canonical* definition — what a
+value is, what the spec is written in, what `draft` emits. **Physical storage
+is each target's native type where one exists** (DuckDB, DuckLake, Postgres);
+the lexical form is the storage only where no native type exists — **SQLite**
+(which is what Python's and Rust's drivers already write) and **HDF5**.
+
+**Removed from the earlier 12:**
+
+- ~~`decimal(p,s)`~~ → **V2+**. Maintainer: little used in practice; and every
+  available encoding was unattractive (SQLite stores it as lossy `REAL`; the
+  `decimal.c` extension is not in the amalgamation and loads per-connection).
+- ~~`timestamptz`~~ → **removed permanently**. Zone information now rides
+  inside the `timestamp` value (RFC 9557 `[Zone]` suffix), or alongside it via
+  a `timezone:` / `timezone_from:` attribute on targets whose native type
+  discards it. Measured on DuckDB: one stored `TIMESTAMPTZ` renders as `+00`,
+  `+12` or `-04` purely by session setting — the input zone is gone. Postgres
+  is explicit: *"the value is stored internally as UTC, and the originally
+  stated or assumed time zone is not retained."*
+
+**Never introduced:** `datestamp` (a date carrying a zone). Two independent
+reasons: **no compliant spelling exists** — RFC 3339 attaches `time-offset`
+only to a *time*, and RFC 9557 extends only `date-time`, so neither
+`2026-07-31+12:00` nor `2026-07-31[Pacific/Auckland]` is standard — and a
+zoned date is **provenance, not a distinct value**: same digits, different
+provenance zone, same day. Provenance is a column attribute.
+
+**`string` takes no length on any target** — all five have an unbounded
+variable-length string type. Length limits are optional *constraints*,
+`max_chars:` (Unicode characters) or `max_bytes:` (UTF-8 bytes), named
+separately because Postgres counts characters and HDF5 counts bytes.
 
 DuckDB names cited from
 [DuckDB data types overview](https://duckdb.org/docs/current/sql/data_types/overview).
@@ -339,11 +397,11 @@ be arbitrarily nested to any depth"*. Also out: `ENUM`, `TIME`, `INTERVAL`,
 **Compounds are deferred. The mechanism for their return is TBD and out of
 scope for v0.3.0** — the direction document should say so rather than sketch
 a design nobody has requirements for yet. When they do return it will be as a
-**(target × language) pairing**, not as lingua franca entries.
+**(target × language) pairing**, not as dbdict type entries.
 
 Two independent reasons, and the second is the harder one:
 
-> **1 — no neutral spelling exists.** A lingua franca works for scalars
+> **1 — no neutral spelling exists.** A neutral vocabulary works for scalars
 > because width and precision are universal concepts. For `STRUCT` ↔
 > `NamedTuple` ↔ `dataclass` ↔ `struct`, field ordering, optionality and
 > nesting all diverge, so the mapping has to be pinned per (db, language)
@@ -358,10 +416,22 @@ Two independent reasons, and the second is the harder one:
 > was chosen for. This is an argument about availability, and it is why the
 > deferral is not merely tidy scoping.
 
-> **The structural cost finding:** 8 of the 12 types are free on every target
-> and in every language. The same 4 cost a decision *twice* — one storage
-> encoding per target *and* one library type per language. That is the whole
-> hard part of V1, and it is 4 rows.
+> **The structural cost finding — ~~8 of the 12 types are free on every
+> target~~. CORRECTED IN PHASE 2**, then revised again when the set shrank to
+> 10. Against the **V1 targets**:
+>
+> | target | native | needs work |
+> |---|---|---|
+> | `duckdb`, `ducklake` | 10 | — |
+> | `hdf5` | 7 | 3 encodings (`bool`, `date`, `timestamp`) |
+> | `sqlite` | 3 (`int64`, `float64`, `string`) | 3 encodings · 3 unenforced int widths · `float32` absent |
+> | ~~`postgres`~~ (V2) | 9 | `int8` — no 1-byte integer, widens to `smallint` |
+>
+> Only **three** types (`int64`, `float64`, `string`) are native on every V1
+> target — not eight. The shape of the original claim survives even though its
+> number did not: a small fixed set costs a decision *twice* — one storage
+> encoding per target *and* one library type per language — and that set is
+> still the whole hard part of V1. It is now **3 rows on two targets**.
 
 ### `attrdef:` — declared, expandable attributes
 
@@ -432,7 +502,7 @@ attrdef:
 | documentary meta-attributes | the attribute itself, for readers | `attrdef.meta:` | **yes** |
 | ⊥ | — | *leaf values have no attributes* | recursion ends |
 
-> Attribute types are drawn from **the same 12-primitive lingua franca**, so
+> Attribute types are drawn from **the same 10 dbdict types**, so
 > the attribute layer reuses the type layer rather than inventing a parallel
 > one. This is not decoration: the hard-coded-struct codegen mode needs a type
 > per attribute to emit a struct field, and without it every attribute would
@@ -454,9 +524,20 @@ canonical:**
   `INDEX`, `SEQUENCE`, `TYPE`, `MACRO`; read back via `duckdb_tables()` /
   `duckdb_columns()`. Limits: *"not possible to comment on schemas or
   databases"*, *"not possible to comment on things that have a dependency."*
-  `Inferred:` Postgres has the same statement, since DuckDB *"follows the
-  PostgreSQL syntax"*. SQLite comment support is **unverified — needs a
-  probe.**
+  ~~`Inferred:`~~ **Confirmed in phase 2** — Postgres does have `COMMENT ON`
+  ([PostgreSQL COMMENT](https://www.postgresql.org/docs/current/sql-comment.html)):
+  *"COMMENT stores, replaces, or removes the comment on a database object."*
+  Read back with `obj_description`/`col_description`. DuckLake also has it,
+  storing comments in `ducklake_tag`/`ducklake_column_tag`.
+
+  **SQLite comment support — resolved in phase 2: there is no `COMMENT ON`
+  statement.** SQLite's `comment` documentation is comment *syntax* (`--`,
+  `/* */`), *"treated as whitespace by the parser"*
+  ([SQL Comment Syntax](https://www.sqlite.org/lang_comment.html)). Probed
+  finding: DDL comments nevertheless **survive verbatim** in
+  `sqlite_schema.sql`, so they can carry documentation — but retrieval means
+  parsing DDL text, not querying a column. The `_dbdict_*` side table is
+  therefore the primary metadata surface on SQLite, not a supplement.
 
 > The side table is needed because `COMMENT ON` holds **one string per
 > object** and the attribute set is open. The mirror is needed because a store
@@ -496,7 +577,7 @@ not extendable"*, ~64K in compact storage.
   stem.
 - **"dataspec" is the concept only.** The `dbdict` binary and the `dbdict*`
   crates keep their names.
-- the lingua franca is a **breaking format change**, and the next version is
+- the dbdict type vocabulary is a **breaking format change**, and the next version is
   therefore `0.3.0`. That *decision* is made here; *acting* on it — editing
   `schema-0.2.yaml`/writing `schema-0.3.yaml`, and the 0.2.0 migration
   story — is downstream work, per the scope rule above.
@@ -505,7 +586,7 @@ not extendable"*, ~64K in compact storage.
 
 `dbdict draft <db>` emits a starting dataspec from an existing store:
 
-- **schema** — table and column names, types mapped into the lingua franca
+- **schema** — table and column names, types mapped into dbdict types
 - **profiled constraints** — `required`, `primary_key`, `unique`,
   `foreign_key`, `cardinality`, proposed by running the D01–D05 queries in
   inference mode

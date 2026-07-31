@@ -47,49 +47,87 @@ Freeze the pre-shift documents so the rewrites in phases 4–5 are non-destructi
 
 ---
 
-### phase 2: research — fill the capability matrix
+### phase 2: research — fill the capability matrix — DONE 2026-08-01
 
 The only phase with genuine unknowns. Everything downstream depends on it.
 Output is a standalone file that phase 3 embeds.
 
-- [ ] write `.claude-work/notes/{stamp}-capability-matrix.md`
-- [ ] **rows**: the 12 LF types (grouped), schema generation, type oracle,
+> **Phase 2 exceeded its plan.** It was scoped as "fill in a matrix"; it turned
+> into a re-design of the type system, because the research falsified premises
+> the type set rested on. Two output files, not one:
+> - `notes/20260731-1253-capability-matrix.md` — the capability research
+>   (415 lines). **Partly superseded**: its research stands, its type set does
+>   not; it carries a banner saying so.
+> - `notes/20260731-1552-dbdict-type-system-decisions.md` — the type-system
+>   decisions that followed (15 logged decisions, 5 open probes).
+>
+> `goal.md` was corrected in-phase rather than deferred, per the phase rule —
+> **three of its claims were falsified** and one terminology change swept
+> through the whole file.
+
+- [x] write `.claude-work/notes/{stamp}-capability-matrix.md`
+- [x] **rows**: the 12 LF types (grouped), schema generation, type oracle,
       metadata surface (`COMMENT ON` equivalent), D01–D05, in-process
       guarantee, round-trip fidelity (`spec → db → draft → spec`)
-- [ ] **columns**: `duckdb`, `ducklake`, `postgres`, `sqlite`, `hdf5`
-- [ ] source **SQLite's type system** first — if it uses type affinity with a
+- [x] **columns**: `duckdb`, `ducklake`, `postgres`, `sqlite`, `hdf5`
+- [x] source **SQLite's type system** first — if it uses type affinity with a
       small set of storage classes, the LF integer and float widths collapse
       and `decimal`/`date`/`timestamp`/`timestamptz` have no native type,
       making SQLite a **second encoding-convention target alongside HDF5**.
       This would falsify `goal.md`'s "SQL targets ≈ flat cost" claim, which
       must then be corrected there and in the direction doc
-- [ ] source **SQLite comment support** — `goal.md` records this as unverified
-- [ ] source **Postgres** type names for the 12 LF types, and confirm
+- [x] source **SQLite comment support** — `goal.md` records this as unverified
+- [x] source **Postgres** type names for the 12 LF types, and confirm
       `COMMENT ON` (currently `Inferred:` from DuckDB's *"follows the
       PostgreSQL syntax"*)
-- [ ] source **DuckLake** — whether it inherits DuckDB's DDL, types, and
+- [x] source **DuckLake** — whether it inherits DuckDB's DDL, types, and
       `COMMENT ON` wholesale, or diverges
-- [ ] settle the **four HDF5 encoding conventions** (`date`, `timestamp`,
+- [x] settle the **four HDF5 encoding conventions** (`date`, `timestamp`,
       `timestamptz`, `decimal(p,s)`) — decide and record, or name the exact
       probe per goal.md criterion 5
-- [ ] every cell resolved with a citation, or `unknown — needs probe: <name>`
+- [x] every cell resolved with a citation, or `unknown — needs probe: <name>`
 
-**verify:**
-- no blank cells: `grep -c '| *|' ` finds no empty table cells
-- every `unknown` cell names a probe:
-  `grep -o 'unknown[^|]*' | grep -v 'needs probe:'` returns nothing
-- every non-obvious claim carries a markdown link or an `Inferred:` marker
-- the in-process row explicitly marks Postgres as breaking it
-- if SQLite is confirmed affinity-based, `goal.md`'s marginal-cost blockquote
-  is corrected in this phase, not deferred
+**verify:** — all 10 checks re-run and passing against the *revised* state
+- [x] no blank table cells (0 across both notes)
+- [x] every in-table `unknown` names a probe (1 remains: `pg-type-oracle`)
+- [x] every non-obvious claim carries a markdown link or `Inferred:` marker —
+      **35 links across 13 official domains**; markers: 98 `[cited]`,
+      34 `[measured]`, 10 `Inferred:`
+- [x] the in-process row explicitly marks Postgres as breaking it
+- [x] SQLite **was** confirmed affinity-based → `goal.md` corrected in-phase
+
+**what the research actually falsified in `goal.md`:**
+1. *"`duckdb → ducklake → postgres → sqlite` ≈ flat, then a step up to
+   `hdf5`"* — **false.** SQLite is affinity-typed and needs the same encoding
+   conventions as HDF5. Real shape is three tiers.
+2. *"8 of the 12 types are free on every target"* — **false.** Three, against
+   the V1 targets.
+3. *"SQLite comment support is unverified"* — **resolved**: no `COMMENT ON`
+   statement exists, but DDL comments survive verbatim in `sqlite_schema.sql`.
+
+**decisions taken (full record in the 1552 note):** vocabulary renamed to
+**dbdict types** (LF/lingua franca retired and swept); **10 types** with exact
+definitions — numerics by bit layout, temporals by RFC profile; `decimal` →
+V2+; `timestamptz` removed; `datestamp` never introduced; `date` = RFC 3339
+`full-date`, `timestamp` = RFC 3339 `date-time` + optional RFC 9557 zone;
+canonical form ≠ physical storage (native where it exists, lexical on SQLite
+and HDF5); SQLite emission **non-STRICT**; **Postgres → V2**; `string`
+unbounded with `max_chars:`/`max_bytes:` as constraints — the latter doubling
+as HDF5's compression switch.
 
 ---
 
 ### phase 3: write the direction document
 
+> **Re-scoped by phase 2.** The type system changed substantially — read
+> `.claude-work/notes/20260731-1552-dbdict-type-system-decisions.md` **before**
+> starting, not just `goal.md`. Its 15-item decision log is the authority on
+> types; the 1253 capability-matrix note is the authority on per-target
+> capability but is *partly superseded* and carries a banner saying which parts.
+
 - [ ] write `docs/vision-direction-0.3.0.md`
 - [ ] sections, in order: positioning · the two entry points · the two-axis
-      model · invariants · lingua-franca type vocabulary · `attrdef:` ·
+      model · invariants · dbdict type vocabulary · `attrdef:` ·
       `languages:` · metadata propagation · V1 command surface · capability
       matrix (embedded from phase 2) · what is explicitly *not* in V1
 - [ ] carry over every sourced quote and link from `goal.md` — this document
@@ -104,7 +142,8 @@ Output is a standalone file that phase 3 embeds.
 - every external claim has a link or an `Inferred:` marker — no bare
   assertions about DuckDB, DuckLake, Postgres, SQLite, HDF5, JLD2 or QuackIO
 - document contains no `TBD`, `TODO`, or blank section
-- the 12 LF types appear with both spellings and a citation
+- the 10 dbdict types appear with their definitions (bit layout for numerics,
+  RFC profile for temporals) and a citation
 
 ---
 
@@ -112,13 +151,14 @@ Output is a standalone file that phase 3 embeds.
 
 - [ ] rewrite `README.md` — remove the `site/` claims and the Quarto/Pages
       paragraph; correct the crate list against `ls crates/`; replace the
-      DuckDB-native-types pitch with the lingua franca; link to
+      DuckDB-native-types pitch with the dbdict type vocabulary; link to
       `docs/vision-direction-0.3.0.md` rather than restating it
-- [ ] state V1 scope honestly in the README: 12 scalar types, tables only,
-      no compounds, `dummy` not shipping in 0.3.0
+- [ ] state V1 scope honestly in the README: 10 scalar types, tables only,
+      no compounds, no `decimal` (V2+), no `postgres` (V2), `dummy` not
+      shipping in 0.3.0
 - [ ] rewrite `CLAUDE.md` — **invert** the cross-backend stance (it currently
       says *"not aiming for cross-backend portability. DuckDB-first"*), record
-      the five targets, and note the in-process guarantee is now
+      the four V1 targets (postgres is V2), and note the in-process guarantee is now
       target-dependent
 - [ ] `CLAUDE.md` points at the direction document; no claim lives in two files
 
@@ -139,7 +179,7 @@ driver, and compound types as a core deliverable (*"struct typedefs can map to
 generated named Julia structs"*, defaults of *"DECIMAL→FixedDecimal,
 ENUM→String, STRUCT→NamedTuple, LIST→Vector"* — three of four now out of V1).
 
-- [ ] rewrite it against V1 scope: 12 scalars, `languages:` NAMEs, driver
+- [ ] rewrite it against V1 scope: 10 scalars, `languages:` NAMEs, driver
       determines the type mapping, no companion mapping file
 - [ ] preserve the original as `goal-v0.2.0.md` in the same directory
 - [ ] update `__on-hold__.md` to note the premises changed and why
