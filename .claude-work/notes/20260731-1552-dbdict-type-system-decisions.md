@@ -340,10 +340,30 @@ most compressible data there is, since consecutive values share long prefixes.
 > it is now fixed-size — it compresses well, which the integer encoding would
 > also have needed chunking to beat.
 >
-> **`Inferred:`** that ISO-8601 columns compress to well under the integer
-> encoding's raw size. Not measured. **Probe `hdf5-temporal-compression`**:
-> write 10⁶ timestamps both ways, apply gzip/szip, compare on-disk bytes and
-> read throughput. Worth running before the encoding is frozen in the spec.
+> **`[measured]` 2026-08-02 — probe `hdf5-temporal-compression` ran; the claim
+> holds and this decision stands.** Full matrix:
+> [`.claude-work/notes/20260802-1146-hdf5-temporal-compression.md`](20260802-1146-hdf5-temporal-compression.md).
+> With `shuffle+gzip(9)`, lexical temporals cost **4.52–4.63 bytes/row sorted
+> and 7.43–7.51 shuffled** — under the 8 bytes/row raw `int64` threshold in
+> every case, so the gap does close.
+>
+> Three corrections to the wording above, which the direction document carries
+> instead of this paragraph's original phrasing:
+> - *"well under"* holds for **sorted** data only. Shuffled clears 8.0 by just
+>   6–7%.
+> - Against **compressed** `int64` (the fair comparison, which this claim
+>   originally did not make) lexical costs **1.14–1.27×** the disk — not the
+>   3.4–7.6× the uncompressed figures implied, and a much better result for
+>   *canonical ≠ physical* than expected.
+> - The real cost is **read time, not size**: 6.6× (`S27`) to 15.8× (`S61`)
+>   against `int64` at each encoding's best filter.
+>
+> Also measured: **szip cannot be applied to lexical temporal columns at all** —
+> `filter_avail()` reports it present, but `H5Dcreate` rejects fixed-width
+> strings, because *"SZIP compression can only be used with atomic datatypes
+> that are integer, float, or char"* ([HDF5 —
+> Compressed Datasets](https://support.hdfgroup.org/documentation/hdf5/latest/_l_b_com_dset.html)).
+> The integer encodings therefore have a filter option the lexical ones do not.
 
 ## 9. ~~SQLite date/timestamp: integers or ISO text?~~ — RESOLVED
 
@@ -486,10 +506,11 @@ here. Below are the sources for claims **new to this document**.
 
 ## still open
 
-- probe **`hdf5-temporal-compression`** — the one open item that could revisit a
-  settled decision. Lexical temporal columns cost 27–61 bytes/row against 8 for
-  an integer encoding; the claim that compression closes that gap is
-  `Inferred:`, not measured (§8).
+- ~~probe **`hdf5-temporal-compression`**~~ — **CLOSED 2026-08-02, decision
+  stands.** Measured: lexical temporals reach 4.52–7.51 bytes/row with
+  `shuffle+gzip(9)`, under the 8 bytes/row `int64` raw threshold in every case.
+  Full matrix and two refinements to §8's wording in
+  [`20260802-1146-hdf5-temporal-compression.md`](20260802-1146-hdf5-temporal-compression.md).
 - probe **`sqlitejl-temporal`** — what does SQLite.jl actually write for
   `Date`/`DateTime`? Julia 1.12.6 is on this machine but SQLite.jl is not
   installed. Matters because Julia is the first codegen target.
