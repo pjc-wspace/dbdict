@@ -213,7 +213,7 @@ temporals reach 4.52–4.63 bytes/row sorted and 7.43–7.51 shuffled with
 
 ---
 
-### phase 2: write the direction document
+### phase 2: write the direction document — DONE 2026-08-03T09:25:23+12:00
 
 Carried from the parent's phase 3, unchanged in substance. **The largest
 phase.**
@@ -227,22 +227,22 @@ phase.**
 **Files:**
 - Create: `docs/vision-direction-0.3.0.md`
 
-- [ ] write `docs/vision-direction-0.3.0.md`
-- [ ] sections, in order: positioning · the two entry points · the two-axis
+- [x] write `docs/vision-direction-0.3.0.md`
+- [x] sections, in order: positioning · the two entry points · the two-axis
       model · invariants · dbdict type vocabulary · `attrdef:` ·
       `languages:` · metadata propagation · V1 command surface · capability
       matrix (embedded from the parent's phase 2) · what is explicitly *not*
       in V1
-- [ ] carry over every sourced quote and link from the parent `goal.md` — this
+- [x] carry over every sourced quote and link from the parent `goal.md` — this
       document is public-facing where `goal.md` is a working record
-- [ ] state the round-trip property (`spec → DDL → db → draft → spec`) and
+- [x] state the round-trip property (`spec → DDL → db → draft → spec`) and
       where it is known to fail
-- [ ] state the compound-type deferral with **both** reasons (no neutral
+- [x] state the compound-type deferral with **both** reasons (no neutral
       spelling; nowhere on the current stack for them to work)
-- [ ] in "not in V1", name the **code/document divergence** explicitly:
+- [x] in "not in V1", name the **code/document divergence** explicitly:
       `decimal(p,s)` and `timestamptz` are out of the V1 type system but are
       still implemented in `crates/`. Recorded debt, not a silent one
-- [ ] type vocabulary gives, per type, the bit layout (numerics, `bool`) or
+- [x] type vocabulary gives, per type, the bit layout (numerics, `bool`) or
       the RFC profile (temporals), plus per-target equivalents for the four V1
       targets, each cited
 
@@ -252,7 +252,40 @@ points · two-axis model · invariants ‖ type vocabulary · `attrdef:` ·
 not-in-V1. Splitting commits a knowingly incomplete file at the boundary, so
 the no-`TBD` check runs only after the second half.
 
-**verify:**
+**outcome:** `docs/vision-direction-0.3.0.md` written — 12 sections (the eleven
+required, plus a short `versioning` closer), 16 external links across 6 domains,
+12 `[measured]` · 12 `[cited]` · 10 `Inferred:` markers, 0 placeholders.
+
+- also: the phase 1 measurement **changed how §5 is written**, as intended. The
+  storage section quotes 4.52–7.51 bytes/row and the 1.14–1.27× compressed-vs-
+  compressed ratio, and states plainly that *"well under" is true of sorted data
+  only* and that **read time (6.6–15.8×), not size, is the cost being
+  accepted**. The pre-probe phrasing appears nowhere.
+- also: the capability matrix gained a **compression-filters row** carrying the
+  szip finding — availability ≠ applicability — which did not exist in the
+  parent's matrix.
+- also: **three unsourced quotes found and fixed during verify**, not by
+  eye — SQLite type affinity and SQLite's `"TEXT as ISO8601 strings"`
+  (both → [sqlite.org/datatype3.html](https://www.sqlite.org/datatype3.html)),
+  and PostgreSQL's *"stored internally as UTC"*
+  (→ [datatype-datetime.html §8.5.1.3](https://www.postgresql.org/docs/current/datatype-datetime.html)).
+  Each was fetched and confirmed before its link was attached, rather than
+  having a plausible URL guessed for it.
+- also: the HDF5 variable-length-string finding is cited **by internal
+  cross-reference** to the decisions note §7, which holds the original citation,
+  rather than by attaching a URL that could not be placed. Honest sourcing beat
+  a tidy-looking link.
+- also: criterion 7 (the dangling reference) **resolves**. Worth recording that
+  it was never a markdown link — the archive note cites the path in backticks,
+  so the first extraction returned empty and read as a failure. The check was
+  wrong, not the artifact.
+- also: `docs/roadmap-0.3.0.md` is now referenced from §11 and §10 and does
+  **not yet exist** — phase 5 creates it. Same forward-reference pattern the
+  archive note had; it is deliberate and closes in this session.
+- also: phase 2 fit one context. The pre-identified split point was **not**
+  needed.
+
+**verify:** — all 7 checks re-run and passing
 - all eleven required headings present (grep for each)
 - every external claim has a link or an `Inferred:` marker — no bare
   assertions about DuckDB, DuckLake, Postgres, SQLite, HDF5, JLD2 or QuackIO
