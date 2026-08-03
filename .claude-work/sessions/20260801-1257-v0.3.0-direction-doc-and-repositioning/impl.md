@@ -382,42 +382,97 @@ and adds two standing warnings for agents working in this repo.
 
 ---
 
-### phase 4: rewrite the held codegen goal
+### phase 4: supersede the held codegen goal — DONE 2026-08-04T10:22:34+12:00
 
-Carried from the parent's phase 5, scope confirmed unchanged: `goal.md` only.
+Carried from the parent's phase 5. **Replanned 2026-08-04, before the phase was
+started** — goal criterion 5 was amended in place at the same time, with the
+superseded wording struck rather than deleted. The original plan was to rewrite
+`goal.md` against V1 scope; it now gets a supersession banner and its body is
+left verbatim.
+
+> **Why.** Maintainer assessment: *"even my goals were wrong"* — the July design
+> is mistaken, not merely stale, and a rewrite would have laundered it into a
+> fresh-looking document while destroying the evidence it was tried. Two
+> supporting findings: the file was already stale in three layers (decided
+> review findings never batch-edited in, five findings never decided, then the
+> V1 re-baseline), so a rewrite would have produced a fourth state matching none
+> of the three records; and a V1 goal cannot honestly be written yet, since the
+> `gen` surface is four bullets across §7 and §9, not a design. Full rationale
+> and the options weighed — (a) rewrite, (b) supersede, (c) close the session —
+> are in `goal.md` under criterion 5.
 
 `.claude-work/sessions/20260723-1109-julia-read-write-codegen/goal.md` assumes
 premises that have moved: DuckDB-only storage, DuckDB.jl as the only driver,
-and compound types as a core deliverable (*"struct typedefs can map to
-generated named Julia structs"*, defaults of *"DECIMAL→FixedDecimal,
-ENUM→String, STRUCT→NamedTuple, LIST→Vector"* — three of four now out of V1).
+compound types as a core deliverable (*"struct typedefs can map to generated
+named Julia structs"*, defaults of *"DECIMAL→FixedDecimal, ENUM→String,
+STRUCT→NamedTuple, LIST→Vector"* — three of four now out of V1), and above all
+a **per-language companion mapping file**, which direction §7 deletes outright:
+naming the driver is sufficient.
+
+**Also established while replanning:** that session's resumption gate — four
+driver-knowledge items in `__on-hold__.md` — is **satisfied**, by the three
+closed sessions that produced `research/duckdb-driver-jl/reference.md`. What
+blocks resumption is no longer missing knowledge but undecided scope, which is
+phase 5's business.
 
 **Files:**
 - Modify: `.claude-work/sessions/20260723-1109-julia-read-write-codegen/goal.md`
-- Create: `.claude-work/sessions/20260723-1109-julia-read-write-codegen/goal-v0.2.0.md`
+  — **banner only, body untouched**
 - Modify: `.claude-work/sessions/20260723-1109-julia-read-write-codegen/__on-hold__.md`
+- **Not created:** `goal-v0.2.0.md`. Nothing is overwritten, so no preservation
+  copy is needed — and the name was wrong anyway: that file is the July 23 goal,
+  not a 0.2.0 spec artifact
 - **Not touched:** that session's `impl.md` and `review-decisions.md`
 
-- [ ] preserve the original as `goal-v0.2.0.md` in the same directory —
-      **copy before editing**, and verify byte-identity against the pre-edit
-      file, not after the fact
-- [ ] rewrite `goal.md` against V1 scope: 10 scalars, `languages:` NAMEs,
-      driver determines the type mapping, no companion mapping file
-- [ ] update `__on-hold__.md` to note the premises changed and why, and to
-      **flag** that `review-decisions.md` is now partly moot under V1 — several
-      of its 15 findings concern `TIMESTAMPTZ`, "all dict-expressible types",
-      and companion pairing, all of which V1 changes. Flag only; whoever
-      resumes reconciles it
-- [ ] leave the session on hold — resuming it is out of scope here
+- [x] add a supersession banner to `goal.md`, immediately after the H1 so
+      `/ws list` still reads the title from line 1. It must say the file is a
+      historical record, that the premises are gone **and named**, and that the
+      durable output of that session lives elsewhere (`spike/`,
+      `research/duckdb-driver-jl/reference.md`, `review-decisions.md`)
+- [x] leave every line of the existing body **byte-identical** — verify by diff
+      against `git show HEAD:<path>`, not by eye
+- [x] update `__on-hold__.md`: the premises moved and why; the resumption gate
+      is satisfied and superseded; **flag** that `review-decisions.md` is now
+      partly moot under V1 — several of its 15 findings concern `TIMESTAMPTZ`,
+      "all dict-expressible types", and companion pairing, all of which V1
+      changes. Flag only; whoever resumes reconciles it
+- [x] leave the session on hold — resuming it is out of scope here
 
-**verify:**
-- `grep -nE 'STRUCT|LIST|ENUM|NamedTuple|FixedDecimal' goal.md` in that dir
-  returns nothing outside an explicit "deferred" section
-- the rewritten goal names `languages:` and the driver-determines-mapping rule
-- `goal-v0.2.0.md` exists and is byte-identical to the pre-rewrite file
-- `__on-hold__.md` still present — session remains held
-- `review-decisions.md` and `impl.md` are unmodified (`git status` shows them
-  untouched)
+**outcome:** banner added (**40 insertions, 0 deletions** — the body is
+byte-identical), `__on-hold__.md` gains a dated section, session stays held.
+`impl.md` and `review-decisions.md` in that session are untouched.
+
+- also: the byte-identity check was **changed during replanning** from
+  copy-then-compare to `git diff --numstat` against the pre-edit blob. A copy
+  proves only that the copy matches; the diff proves the file *in history* is
+  unchanged, needs no second file, and thereby dissolved the `goal-v0.2.0.md`
+  naming problem entirely.
+- also: the `__on-hold__.md` note **splits the review ledger by cause** rather
+  than flagging it wholesale — findings V1 invalidates (`TIMESTAMPTZ`, "all
+  dict-expressible types", companion pairing incl. finding 12's legacy-name
+  case) versus the four that look V1-agnostic and remain undecided from July
+  (8 identifier safety, 10 output model, 13 verify wording, 15 pk phrasing).
+  Neither group was resolved. The split is what makes the flag actionable
+  instead of a warning to re-derive later.
+- also: **not planned** — the note closes with a practical steer that `/ws plan`
+  rebuilds `impl.md` on resume anyway, so starting a fresh session and mining
+  this one for artifacts may beat resuming it. That leaves option (c) available
+  to whoever picks it up without taking the decision now.
+- also: the banner's relative link `../../../docs/vision-direction-0.3.0.md`
+  was checked to resolve, not assumed.
+
+**verify:** — all 6 checks run and passing
+- [x] `git diff HEAD -- <held goal.md>` shows **only** inserted banner lines — no
+      deletions, no modifications to existing lines (`numstat`: `40  0`)
+- [x] the banner names the companion-file deletion, the compound-type removal, and
+      the driver/CLI-shape change, and links `docs/vision-direction-0.3.0.md`
+- [x] the banner points at `spike/`, `research/duckdb-driver-jl/reference.md` and
+      `review-decisions.md` as where the session's value actually lives
+- [x] `__on-hold__.md` still present — session remains held
+- [x] `review-decisions.md` and that session's `impl.md` are unmodified
+      (`git status` shows them untouched)
+- [x] this session's `goal.md` criterion 5 shows the struck original alongside the
+      amendment
 
 ---
 

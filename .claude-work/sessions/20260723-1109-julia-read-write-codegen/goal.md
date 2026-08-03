@@ -1,5 +1,45 @@
 # julia read/write codegen
 
+> ## ⚠ SUPERSEDED — historical record, 2026-08-04
+>
+> **Everything below this banner is the July 2026 intent, kept verbatim and
+> uncorrected. Do not use it as the starting point for future codegen work.**
+> The 0.3.0 re-baseline removed most of its premises, and the maintainer's
+> assessment is that the goals themselves were wrong — not merely stale. It is
+> preserved rather than rewritten so that what was tried, and why it was
+> dropped, stays legible.
+>
+> **What 0.3.0 V1 removes** (canonical scope:
+> [`docs/vision-direction-0.3.0.md`](../../../docs/vision-direction-0.3.0.md)):
+>
+> - **the per-language companion mapping file** — `DBNAME.dbdict-jlmap.yaml`,
+>   `type_declarations:`, scoped `type_mappings:`, the specificity ordering and
+>   the closed-world rule. This is the document's central design and §7 deletes
+>   it outright: the type mapping follows from the (target database, driver)
+>   pair, so naming the driver is sufficient and no mapping file is needed
+> - **the built-in defaults table** — `DECIMAL→FixedDecimal`, `ENUM→String`,
+>   `STRUCT→NamedTuple`, `LIST→Vector`. All four of those types are out of V1
+> - **struct typedefs → generated named Julia structs** — no compound types in
+>   V1, and §11 records that their return will be a (target × language)
+>   pairing rather than dbdict type entries
+> - **"all dict-expressible types supported on every path"** — V1 is ten
+>   scalars
+> - **DuckDB.jl as *the* driver, and a dedicated CLI subcommand** — targets are
+>   now `duckdb`/`ducklake`/`sqlite`/`hdf5`, drivers are named per language in
+>   a `languages:` section, and generation is `dbdict gen <NAME>`
+>
+> **What survives** is the deliverable shape, not the design: a bulk/row ×
+> read/write API surface, a round-trip test against a real database, the
+> plain-Julia-for-a-novice constraint, and the rule that a generator crate
+> consumes the resolved model only.
+>
+> **This session's durable output is not this file.** It is the phase 1
+> capability spike (`spike/`), the driver reference it gated
+> (`research/duckdb-driver-jl/reference.md`), and the 15-finding adversarial
+> review ledger (`review-decisions.md`). Note also `__on-hold__.md`, which
+> recorded *before* 0.3.0 that this file was already stale against
+> `review-decisions.md`.
+
 ## problem
 
 dbdict describes tables in DuckDB-native types, but the only model consumers

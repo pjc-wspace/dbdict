@@ -90,12 +90,36 @@ and keep their original numbers there; the mapping is noted per item. Criterion
    in-process guarantee is now target-dependent. It points at the direction
    document rather than restating it — **no claim lives in two files.**
 
-5. *(parent 9)* The held codegen session's `goal.md` is **rewritten, not
+5. *(parent 9)* ~~The held codegen session's `goal.md` is **rewritten, not
    amended**, so it contains no premise contradicting V1 scope. The pre-rewrite
-   file is preserved byte-identically as `goal-v0.2.0.md`. `__on-hold__.md`
-   records that the premises moved and why, and additionally **flags** that
+   file is preserved byte-identically as `goal-v0.2.0.md`.~~ **Amended
+   2026-08-04, before phase 4 was started** — the held codegen session's
+   `goal.md` is **superseded in place, not rewritten**. Its July text stays
+   verbatim and gains a banner marking it a historical record, naming which
+   premises are gone and where the durable artifacts live. No `goal-v0.2.0.md`
+   copy is made, because nothing is overwritten. `__on-hold__.md` records that
+   the premises moved and why, and additionally **flags** that
    `review-decisions.md` is now partly moot under V1 — without resolving it.
    The session stays held.
+
+   > **Why the criterion changed.** Three findings, in order of weight.
+   > **(i)** *Maintainer assessment:* "even my goals were wrong" — the July
+   > design is not merely stale, it is mistaken. Rewriting it would have
+   > laundered a bad design into a fresh-looking one and destroyed the evidence
+   > that it was tried. **(ii)** The staleness was already in three layers, and
+   > a rewrite addressed only the newest: decided review findings never
+   > batch-edited in (July 26), five findings never decided at all, and the V1
+   > re-baseline. The output would have matched none of the three records — a
+   > fourth state. `__on-hold__.md:24` already said this file was stale against
+   > `review-decisions.md` before 0.3.0 touched it. **(iii)** A V1 goal cannot
+   > honestly be written yet: the `gen` surface is four bullets across §7 and
+   > §9, not a design. Re-planning belongs to whoever resumes, after phase 5
+   > orders it.
+   >
+   > Options weighed were (a) rewrite as planned, (b) supersede in place,
+   > (c) close the held session and let the roadmap carry codegen. (c) was
+   > recommended and (b) chosen — it keeps the session resumable without
+   > inventing a scope for it.
 
 6. *(parent 10)* An ordered roadmap exists at `docs/roadmap-0.3.0.md`, into
    which the parent's six pending benchmark follow-ups and the four remaining
