@@ -305,7 +305,7 @@ required, plus a short `versioning` closer), 16 external links across 6 domains,
 
 ---
 
-### phase 3: reposition README and invert CLAUDE.md
+### phase 3: reposition README and invert CLAUDE.md — DONE 2026-08-03T13:24:29+12:00
 
 Carried from the parent's phase 4.
 
@@ -313,30 +313,72 @@ Carried from the parent's phase 4.
 - Modify: `README.md`
 - Modify: `CLAUDE.md`
 
-- [ ] rewrite `README.md` — remove the `site/` claims and the Quarto/Pages
+- [x] rewrite `README.md` — remove the `site/` claims and the Quarto/Pages
       paragraph; correct the crate list against `ls crates/`; replace the
       DuckDB-native-types pitch with the dbdict type vocabulary; link to
       `docs/vision-direction-0.3.0.md` rather than restating it
-- [ ] state V1 scope honestly in the README: 10 scalar types, tables only,
+- [x] state V1 scope honestly in the README: 10 scalar types, tables only,
       no compounds, no `decimal` (V2+), no `postgres` (V2), `dummy` not
       shipping in 0.3.0
-- [ ] rewrite `CLAUDE.md` — **invert** the cross-backend stance (it currently
+- [x] rewrite `CLAUDE.md` — **invert** the cross-backend stance (it currently
       says *"not aiming for cross-backend portability. DuckDB-first"*), record
       the four V1 targets (postgres is V2), and note the in-process guarantee
       is now target-dependent
-- [ ] `CLAUDE.md` points at the direction document; no claim lives in two files
-- [ ] **the crate list is seven, not four** — `dbdict`, `dbdict-cli`,
+- [x] `CLAUDE.md` points at the direction document; no claim lives in two files
+- [x] **the crate list is seven, not four** — `dbdict`, `dbdict-cli`,
       `dbdict-ddl`, `dbdict-duckdb`, `dbdict-dummy-data`,
       `dbdict-dummy-data-duckdb`, `dbdict-parquet`. `CLAUDE.md` currently lists
       four; the README's list was already wrong at the `v0.2.0` tag
 
-**verify:**
-- `grep -n 'site/' README.md` returns nothing
-- every relative link in `README.md` resolves to an existing path
-- README crate list matches `ls crates/` exactly (set comparison, all seven)
-- `grep -n 'cross-backend portability' CLAUDE.md` shows the inverted wording
-- no sentence appears in both `README.md` and `docs/vision-direction-0.3.0.md`
-- `CLAUDE.md`'s in-process claim is qualified per target
+**outcome:** both files rewritten. `README.md` is now three layers — a status
+banner, *what V1 of 0.3.0 covers* (all links, no restatement), and *what runs
+today* (everything true of the current binary). `CLAUDE.md` inverts the stance
+and adds two standing warnings for agents working in this repo.
+
+- also: the **structural problem of the phase was the conjunction** in goal
+  criterion 3 — every claim true of the repo *and* of V1's scope. Those pull
+  opposite ways (`dummy` ships today, is out of V1). Resolved by making tense
+  and scope explicit per claim rather than picking one timeline: the README
+  says both things in separate labelled sections, and `dummy` carries **"Not
+  shipping in 0.3.0"** in its own bullet.
+- also: **anchor fragments were written and then removed.** The first draft
+  linked `docs/vision-direction-0.3.0.md#5-the-dbdict-type-vocabulary` and
+  similar. GitHub's heading→anchor slugification is an external-tool claim that
+  would have been asserted from memory, and a wrong slug fails *silently* — the
+  link still resolves, it just lands at the top of the page. Replaced with the
+  repo's existing convention: section number in the **link text** (`[§5](…)`),
+  no fragment. Matches how the direction document cites its own sources.
+- also: the verify script was **poison-tested** before its result was believed —
+  a sentence pasted from the direction document into a copy of the README made
+  the overlap check fail, and it matched across the two files' different
+  line-wrapping. Direct application of phase 2's insight
+  (`verify-scripts-encode-assumptions`).
+- also: the overlap check needed **exclusions to be meaningful** — fenced code
+  blocks and markdown table rows are stripped before comparison. The CLI
+  `Usage:` block and a shared capability-matrix row are the same *data* quoted
+  twice, not the same claim living in two files.
+- also: facts re-checked against the tree rather than carried from the state
+  file — seven crates, no `site/`, CLI command enum unchanged
+  (`crates/dbdict-cli/src/main.rs:17`), and the bundled DuckDB version
+  (`v1.5.4`) now cited to `Cargo.lock`'s `duckdb 1.10504.0` rather than left as
+  a bare number. `v1.5.4` is also the highest version string embedded in
+  `target/release/dbdict`.
+- also: the checker lives at `$CLAUDE_JOB_DIR/tmp/verify_phase3.py` and is
+  **not committed** — the session is documents-only and adding a tools script
+  was not in scope. Phase 5 re-runs the same invariant against
+  `docs/roadmap-0.3.0.md`, so it is worth promoting to `research/` or a
+  `tools/` dir if the check is wanted permanently.
+
+**verify:** — all 6 checks run and passing
+- [x] `grep -n 'site/' README.md` returns nothing
+- [x] every relative link in `README.md` resolves to an existing path (19 links)
+- [x] README crate list matches `ls crates/` exactly (set comparison, all seven)
+      — also checked for `CLAUDE.md`
+- [x] `grep -n 'cross-backend portability' CLAUDE.md` shows the inverted wording
+      (line 22)
+- [x] no sentence appears in both `README.md` and `docs/vision-direction-0.3.0.md`
+      (check poison-tested)
+- [x] `CLAUDE.md`'s in-process claim is qualified per target (lines 68–73)
 
 ---
 
