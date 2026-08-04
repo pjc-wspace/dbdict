@@ -100,7 +100,15 @@ and keep their original numbers there; the mapping is noted per item. Criterion
    copy is made, because nothing is overwritten. `__on-hold__.md` records that
    the premises moved and why, and additionally **flags** that
    `review-decisions.md` is now partly moot under V1 — without resolving it.
-   The session stays held.
+   ~~The session stays held.~~ **Amended 2026-08-05, after phase 4 completed** —
+   the session is **closed in phase 5**, not left held. Maintainer decision:
+   *"codegen gets its own session, needs a fresh new look."* A hold means "will
+   resume"; that is now known to be false, so closing it is what makes
+   `/ws list` tell the truth. Closing writes `summary.md` and removes
+   `__on-hold__.md` — nothing else in that directory is touched and no artifact
+   moves. This is option (c) from the phase 4 discussion, arrived at one step
+   later than proposed: (b) preserved the record, and (c) now corrects the
+   status.
 
    > **Why the criterion changed.** Three findings, in order of weight.
    > **(i)** *Maintainer assessment:* "even my goals were wrong" — the July

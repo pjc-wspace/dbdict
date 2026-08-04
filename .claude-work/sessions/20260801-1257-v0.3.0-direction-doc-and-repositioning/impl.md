@@ -479,10 +479,17 @@ byte-identical), `__on-hold__.md` gains a dated section, session stays held.
 ### phase 5: roadmap, triage, and clean tree
 
 Carried from the parent's phase 6, with the roadmap location now decided.
+**Amended 2026-08-05** — gained the close of the held codegen session, per the
+maintainer decision *"codegen gets its own session, needs a fresh new look."*
+Goal criterion 5 was amended to match, with `The session stays held` struck.
 
 **Files:**
 - Create: `docs/roadmap-0.3.0.md`
 - Modify: `docs/vision-direction-0.3.0.md` (link to the roadmap only)
+- Create: `.claude-work/sessions/20260723-1109-julia-read-write-codegen/summary.md`
+- Delete: `.claude-work/sessions/20260723-1109-julia-read-write-codegen/__on-hold__.md`
+- **Not touched, again:** that session's `goal.md` (banner is final), `impl.md`,
+  `review-decisions.md`, `driver-reference-handoff.md`, `spike/`
 
 > **Sibling file, not a section of the direction document.** The direction doc
 > already runs to eleven sections, and a roadmap churns on a different clock
@@ -499,7 +506,25 @@ Carried from the parent's phase 6, with the roadmap location now decided.
       3. measure prepared bind (tier 3) and per-row INSERT
       4. fix `numbers.py` memory-figure tolerance
       5. fix the allocations-column mislabel (2 instances)
-      6. resume the held codegen session
+      6. ~~resume the held codegen session~~ **superseded** — codegen enters the
+         roadmap as a **fresh session**, not a resumption. See the close step
+         below
+- [ ] **close the held codegen session** `20260723-1109-julia-read-write-codegen`
+      — write its `summary.md` (phase 1 capability spike complete though its
+      `/ws done` never ran; resumption gate satisfied by the three driver
+      sessions; `goal.md` superseded 2026-08-04; `review-decisions.md` ledger
+      part-decided) and remove `__on-hold__.md`. Nothing else in that directory
+      changes and no artifact moves
+      > **Why closing, not holding.** A hold asserts "will resume". That is now
+      > known false, so the status is the only inaccurate thing left about that
+      > session — its `goal.md` banner and hold note are already truthful.
+      > Closing is what makes `/ws list` agree with them
+- [ ] the roadmap's codegen item states **fresh session**, and names as its
+      inputs the artifacts worth mining (`spike/`,
+      `research/duckdb-driver-jl/reference.md`, `review-decisions.md`) plus the
+      **four still-undecided review findings** — 8 identifier safety, 10 output
+      model, 13 verify wording, 15 pk phrasing — which are V1-agnostic and
+      should not stay buried in a July ledger
 - [ ] fold in the **four remaining open probes** — `sqlitejl-temporal`,
       `pg-type-oracle` (deferred with Postgres to V2), `sqlite-comment-durability`,
       `jld2-h5-crosscheck`
@@ -516,6 +541,13 @@ Carried from the parent's phase 6, with the roadmap location now decided.
 - the `decimal`/`timestamptz` divergence appears as its own item
 - roadmap items are ordered and each names its blocking dependency
 - `docs/vision-direction-0.3.0.md` links the roadmap and does not duplicate it
+- **no sentence appears in both `docs/roadmap-0.3.0.md` and
+  `docs/vision-direction-0.3.0.md`** — same invariant phase 3 checked, same
+  script (`verify_phase3.py`, currently in the job tmp dir; promote or re-write)
+- the held session is **closed**: `summary.md` exists, `__on-hold__.md` is gone,
+  and `git status` shows `goal.md`, `impl.md`, `review-decisions.md`,
+  `driver-reference-handoff.md` and `spike/` unmodified
+- the roadmap's codegen item says fresh session and names findings 8, 10, 13, 15
 - `git status --short` is empty
 - `git tag -l v0.2.0` still resolves to `ab468fa`
 
