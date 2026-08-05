@@ -476,7 +476,7 @@ byte-identical), `__on-hold__.md` gains a dated section, session stays held.
 
 ---
 
-### phase 5: roadmap, triage, and clean tree
+### phase 5: roadmap, triage, and clean tree — DONE 2026-08-05T12:23:42+12:00
 
 Carried from the parent's phase 6, with the roadmap location now decided.
 **Amended 2026-08-05** — gained the close of the held codegen session, per the
@@ -496,9 +496,9 @@ Goal criterion 5 was amended to match, with `The session stays held` struck.
 > than a positioning statement — mixing them means every re-prioritisation
 > edits the file people cite for what dbdict *is*.
 
-- [ ] write `docs/roadmap-0.3.0.md` — ordered, each item naming its blocking
+- [x] write `docs/roadmap-0.3.0.md` — ordered, each item naming its blocking
       dependency
-- [ ] triage the six pending follow-ups from the closed benchmark session —
+- [x] triage the six pending follow-ups from the closed benchmark session —
       each folded into the roadmap or explicitly dropped with a reason:
       1. `/code-review` ×3 (numbers.py ranking extractor, numbers.py pattern
          fix, run_all.jl header)
@@ -509,7 +509,7 @@ Goal criterion 5 was amended to match, with `The session stays held` struck.
       6. ~~resume the held codegen session~~ **superseded** — codegen enters the
          roadmap as a **fresh session**, not a resumption. See the close step
          below
-- [ ] **close the held codegen session** `20260723-1109-julia-read-write-codegen`
+- [x] **close the held codegen session** `20260723-1109-julia-read-write-codegen`
       — write its `summary.md` (phase 1 capability spike complete though its
       `/ws done` never ran; resumption gate satisfied by the three driver
       sessions; `goal.md` superseded 2026-08-04; `review-decisions.md` ledger
@@ -519,37 +519,106 @@ Goal criterion 5 was amended to match, with `The session stays held` struck.
       > known false, so the status is the only inaccurate thing left about that
       > session — its `goal.md` banner and hold note are already truthful.
       > Closing is what makes `/ws list` agree with them
-- [ ] the roadmap's codegen item states **fresh session**, and names as its
+- [x] the roadmap's codegen item states **fresh session**, and names as its
       inputs the artifacts worth mining (`spike/`,
       `research/duckdb-driver-jl/reference.md`, `review-decisions.md`) plus the
       **four still-undecided review findings** — 8 identifier safety, 10 output
       model, 13 verify wording, 15 pk phrasing — which are V1-agnostic and
       should not stay buried in a July ledger
-- [ ] fold in the **four remaining open probes** — `sqlitejl-temporal`,
+- [x] fold in the **four remaining open probes** — `sqlitejl-temporal`,
       `pg-type-oracle` (deferred with Postgres to V2), `sqlite-comment-durability`,
       `jld2-h5-crosscheck`
-- [ ] fold in the **`decimal`/`timestamptz` code-vs-docs divergence** as an
+- [x] fold in the **`decimal`/`timestamptz` code-vs-docs divergence** as an
       explicit roadmap item — 121 hits, 19 files, source and tests
-- [ ] confirm the three research dirs are dispositioned (done in `410a44a`;
+- [x] confirm the three research dirs are dispositioned (done in `410a44a`;
       re-verify rather than assume)
-- [ ] final `git status` clean
+- [x] final `git status` clean
 
-**verify:**
-- all six follow-ups appear in the roadmap or a "dropped" list, each with a
-  one-line reason
-- all four open probes appear, `pg-type-oracle` marked V2
-- the `decimal`/`timestamptz` divergence appears as its own item
-- roadmap items are ordered and each names its blocking dependency
-- `docs/vision-direction-0.3.0.md` links the roadmap and does not duplicate it
-- **no sentence appears in both `docs/roadmap-0.3.0.md` and
-  `docs/vision-direction-0.3.0.md`** — same invariant phase 3 checked, same
-  script (`verify_phase3.py`, currently in the job tmp dir; promote or re-write)
-- the held session is **closed**: `summary.md` exists, `__on-hold__.md` is gone,
-  and `git status` shows `goal.md`, `impl.md`, `review-decisions.md`,
-  `driver-reference-handoff.md` and `spike/` unmodified
-- the roadmap's codegen item says fresh session and names findings 8, 10, 13, 15
-- `git status --short` is empty
-- `git tag -l v0.2.0` still resolves to `ab468fa`
+**outcome:** `docs/roadmap-0.3.0.md` written — 20 numbered items in dependency
+order across five groups, plus a deferred-to-V2 section and one recorded open
+question. The held codegen session is closed. Every count the plan inherited was
+re-derived against the artifacts, and **three of them were wrong**.
+
+- also: **the plan's "six follow-ups" was a mis-enumeration.** The benchmark
+  session's `summary.md` carries **seven**. The parent session's phase 6 kept
+  its items 1–5 and then *substituted* "resume the held codegen session" — which
+  appears nowhere in that summary — for its real items 6 and 7 (the marginal
+  `1t · read · struct · 1M` cell, and the `results.md` layering question). Both
+  are carried here as R19 and the closing open question. Following the plan
+  literally would have silently dropped two live follow-ups, which is the exact
+  failure the triage step exists to prevent.
+- also: **the plan's "four open probes" was also short.** Direction §10's table
+  has **five rows naming six probes** — `ducklake-describe` and
+  `ducklake-roundtrip` share a row and were in neither the plan nor the state
+  file. All six are scheduled (R4–R7, `pg-type-oracle` deferred).
+- also: **the review ledger has seven `PENDING`, not five.** `review-decisions.md`
+  shows 7, 8, 9, 10, 12, 13, 15 open. `__on-hold__.md` records "decided 1-7"
+  and omits 9 entirely, so the two disagree; the ledger wins, since that note
+  itself names it the source of truth. **Finding 9 was never classified** by
+  phase 4's V1-agnostic/V1-invalidated split and is genuinely mixed — its
+  StructArrays half is moot, its mixed-table tier-logic half is not. R14 and the
+  new `summary.md` both record this.
+- also: **`__on-hold__.md` was archived, not deleted** — a deviation from this
+  plan's wording. Its 2026-08-04 section is the sole record of the gate being
+  satisfied and the ledger being split by cause, and both the roadmap and the
+  new `summary.md` cite it. It moved to
+  `hold-archive/20260805-1209-on-hold.md` (`git mv`, so history follows), which
+  clears the held status — the thing closing had to achieve — without discarding
+  evidence. Same principle as phase 4: supersede, don't destroy.
+- also: **the overlap checker was rewritten, because two poison tests defeated
+  the phase 3 design.** Sentence-unit comparison is fragile at boundaries: a
+  planted sentence adjacent to a horizontal rule, and one adjacent to a list
+  marker, both got glued to that fragment and never matched their twin. Phase 3's
+  check passed only because the sentence it planted happened to split cleanly.
+  Replaced with **12-word shingle overlap**, which assumes nothing about where a
+  claim begins or ends; both poison variants now fail as they should.
+- also: **the stronger checker immediately found a real violation** — R3 had
+  re-listed the five `crates/` modules from direction §11 verbatim. Rewritten to
+  cite §11 and keep only the headline figure. The weak checker had passed that
+  file. The invariant was being asserted, not enforced.
+- also: **phase 3's result was re-verified under the strong checker.**
+  `README.md` is clean (0 shared spans). `CLAUDE.md` shares one 12-word span
+  with direction §10 — the in-process/`PATH` guarantee — but `CLAUDE.md` was
+  never inside phase 3's overlap check, which compared README against the
+  direction document only. Reported, **not changed**: it is outside phase 5's
+  file list, and there is a real argument that the file agents read first should
+  state that guarantee rather than link it.
+- also: the state file's claim that direction §10 *already* linked the roadmap
+  was wrong — only §11 did. §10 gained a one-line pointer, so the probes'
+  scheduling is discoverable from the table that lists them.
+- also: the "nine audit tools" follow-up understates the tree: **13 Python
+  scripts** across two closed session dirs (8 + 5). R16 says 13 and folds in the
+  overlap checker, which has the same problem — an invariant whose only
+  mechanical check lives in a scratch directory.
+- also: `verify_phase5.py` is **still not committed**, for the same
+  documents-only scope reason as phase 3. That is now a scheduled roadmap item
+  (R16) rather than a loose end, which is the difference between a known gap and
+  a forgotten one.
+
+**verify:** — all 15 mechanical checks passing, both poison tests biting
+- [x] all **seven** follow-ups appear in the roadmap, each with a one-line
+      reason; none dropped
+- [x] all **six** open probes appear, `pg-type-oracle` in the deferred section
+- [x] the `decimal`/`timestamptz` divergence appears as its own item (R3)
+- [x] roadmap items are ordered (R1–R20 contiguous) and each carries a
+      `**blocked by:**` line; **no item waits on a higher-numbered one**
+      (checked mechanically, poison-tested by making R2 depend on R9)
+- [x] `docs/vision-direction-0.3.0.md` links the roadmap (4 references) and does
+      not duplicate it
+- [x] **no 12-word span appears in both `docs/roadmap-0.3.0.md` and
+      `docs/vision-direction-0.3.0.md`** — replaces the sentence-overlap check;
+      `verify_phase5.py` in the job tmp dir, poison-tested twice
+- [x] the held session is **closed**: `summary.md` exists, `__on-hold__.md` gone
+      from the session root (archived), and `git diff HEAD` shows `goal.md`,
+      `impl.md`, `review-decisions.md`, `driver-reference-handoff.md` and
+      `spike/` unmodified
+- [x] the roadmap's codegen item says fresh session and names findings 8, 10,
+      13, 15
+- [x] the three research dirs re-verified as dispositioned — 25/1/1 files
+      tracked, 0 untracked, generated outputs matched by an ignore rule
+      confirmed with `git check-ignore -v`
+- [x] `git status --short` is empty
+- [x] `git tag -l v0.2.0` still resolves to `ab468fa`
 
 ---
 

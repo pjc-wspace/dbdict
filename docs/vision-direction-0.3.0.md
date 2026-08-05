@@ -586,6 +586,9 @@ targets**.
 > entirely on the `_dbdict_*` side table, and the DDL-comment mirror should be
 > dropped rather than shipped as a half-guarantee.
 
+Every probe above is scheduled in [`roadmap-0.3.0.md`](roadmap-0.3.0.md), ahead
+of the target work it gates.
+
 ---
 
 ## 11. what is explicitly not in V1
